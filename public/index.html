@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hifz Daily Monitor</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="scene"></div>
+
+    <div class="shell">
+      <header class="hero panel">
+        <div class="hero-copy">
+          <p class="eyebrow">Hifz Daily Monitor</p>
+          <h1 id="hero-title">Bismillah, voici ton plan du jour !&#10024;</h1>
+          <p class="hero-text">
+            Le tableau affiche seulement ce qu'il faut reciter aujourd'hui, dans l'ordre du programme.
+          </p>
+        </div>
+        <div class="hero-side">
+          <div id="summary" class="hero-summary"></div>
+          <aside class="hero-aside">
+            <p class="eyebrow">Repere</p>
+            <p class="muted">
+              Le but est de cloturer la revision de l'ancien (&lt; j-30) tout les 7 jours, la consolidation
+              (de j-8 a j-30) tout les 3 jours puis de reviser le recent (de j-1 a j-7) puis de reviser la veille
+              (j-1) et enfin apprendre le nouveau.
+            </p>
+          </aside>
+        </div>
+      </header>
+
+      <section class="panel section-nav-panel">
+        <div class="section-nav">
+          <button class="section-tab active" type="button" data-view-target="today">Aujourd'hui</button>
+          <button class="section-tab" type="button" data-view-target="pages">Pages</button>
+          <button class="section-tab" type="button" data-view-target="settings">Parametres</button>
+        </div>
+      </section>
+
+      <div class="view-stack">
+        <section id="view-today" class="content-view active">
+          <div class="today-layout">
+            <aside class="panel actions-panel">
+              <div class="section-head">
+                <div>
+                  <p class="eyebrow">Journee</p>
+                  <h2>Etat De Validation</h2>
+                </div>
+                <p class="muted">Valide les blocs dans l'ordre, puis passe au lendemain.</p>
+              </div>
+              <div id="day-status" class="day-status"></div>
+              <div class="action-stack">
+                <button id="reset-button" class="secondary-button" type="button">Reinitialiser les validations du jour</button>
+                <button id="advance-button" class="primary-button" type="button">Valider la journee et passer au lendemain</button>
+              </div>
+            </aside>
+
+            <div class="today-main">
+              <section class="panel route-panel">
+                <div class="section-head">
+                  <div>
+                    <p class="eyebrow">Ordre Du Jour</p>
+                    <h2>Chemin De Recitation</h2>
+                  </div>
+                  <p class="muted">Toujours du plus ancien vers le plus neuf, sans melanger les niveaux.</p>
+                </div>
+                <div class="route-strip">
+                  <article class="route-step old" data-route-key="old">
+                    <span class="step-index">1</span>
+                    <span class="route-status">En attente</span>
+                    <h3>Ancien</h3>
+                    <p>Pool complet avant J-30, decoupe en 7 parties visibles.</p>
+                  </article>
+                  <article class="route-step consolidation" data-route-key="consolidation">
+                    <span class="step-index">2</span>
+                    <span class="route-status">En attente</span>
+                    <h3>Consolidation</h3>
+                    <p>Revision des 30 derniers jours, sur la tranche J-8 a J-30.</p>
+                  </article>
+                  <article class="route-step recent" data-route-key="recent">
+                    <span class="step-index">3</span>
+                    <span class="route-status">En attente</span>
+                    <h3>Recent</h3>
+                    <p>Bloc continu J-1 a J-7 pour garder le fragile tres proche.</p>
+                  </article>
+                  <article class="route-step yesterday" data-route-key="yesterday">
+                    <span class="step-index">4</span>
+                    <span class="route-status">En attente</span>
+                    <h3>Veille</h3>
+                    <p>Le bloc d'hier isole, pour verifier le passage immediat.</p>
+                  </article>
+                  <article class="route-step new" data-route-key="new">
+                    <span class="step-index">5</span>
+                    <span class="route-status">En attente</span>
+                    <h3>Nouveau</h3>
+                    <p>Le bloc du jour, avec 3 vagues et 9 validations au total.</p>
+                  </article>
+                </div>
+              </section>
+
+              <main id="cards" class="cards"></main>
+            </div>
+          </div>
+        </section>
+
+        <section id="view-pages" class="content-view">
+          <section class="panel error-panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Suivi Des Erreurs</p>
+                <h2>Carte Des Pages</h2>
+              </div>
+              <p class="muted">
+                Renseigne une page apres une recitation, puis visualise a la fois les zones fragiles et les reperes du programme du jour sur tout le mushaf.
+              </p>
+            </div>
+            <div class="pages-board">
+              <aside class="pages-info-column">
+                <section class="pages-section quick-guide-card">
+                  <p class="eyebrow">Saisie Rapide</p>
+                  <h3>Une page, un clic, une erreur</h3>
+                  <p class="helper">
+                    Clique une page dans la grille pour ouvrir ses actions rapides, puis choisis directement
+                    Mineur, Moyenne, Grave ou Effacer.
+                  </p>
+                </section>
+
+                <section class="pages-section">
+                  <div class="pages-section-head">
+                    <div>
+                      <p class="eyebrow">Synthese</p>
+                      <h3>Etat De La Carte</h3>
+                    </div>
+                  </div>
+                  <div id="error-summary" class="error-summary-grid"></div>
+                </section>
+
+                <section class="pages-section legend-section">
+                  <div class="pages-section-head">
+                    <div>
+                      <p class="eyebrow">Lecture</p>
+                      <h3>Lire La Carte</h3>
+                    </div>
+                  </div>
+                  <div class="legend-grid">
+                    <article class="legend-chip">
+                      <span class="severity-dot none"></span>
+                      <div>
+                        <strong>Neutre</strong>
+                        <p class="helper">Aucune erreur enregistree.</p>
+                      </div>
+                    </article>
+                    <article class="legend-chip">
+                      <span class="severity-dot minor"></span>
+                      <div>
+                        <strong>Mineur</strong>
+                        <p class="helper">Voyelle ou petite correction locale.</p>
+                      </div>
+                    </article>
+                    <article class="legend-chip">
+                      <span class="severity-dot medium"></span>
+                      <div>
+                        <strong>Moyenne</strong>
+                        <p class="helper">Erreur dans un mot ou hesitation plus nette.</p>
+                      </div>
+                    </article>
+                    <article class="legend-chip">
+                      <span class="severity-dot grave"></span>
+                      <div>
+                        <strong>Grave</strong>
+                        <p class="helper">Oubli, blocage ou cassure majeure.</p>
+                      </div>
+                    </article>
+                    <article class="legend-chip">
+                      <span class="severity-dot learned"></span>
+                      <div>
+                        <strong>Apprise</strong>
+                        <p class="helper">Page deja memorisee, visible meme sans erreur.</p>
+                      </div>
+                    </article>
+                  </div>
+                </section>
+              </aside>
+
+              <section class="pages-section pages-map-section">
+                <div class="pages-section-head">
+                  <div>
+                    <p class="eyebrow">Mushaf</p>
+                    <h3>Representation Du Coran</h3>
+                  </div>
+                  <p class="helper">Clique une page pour ouvrir les actions rapides a droite.</p>
+                </div>
+                <div class="pages-map-top">
+                  <div class="pages-map-note">
+                    <p class="eyebrow">Definitions</p>
+                    <p class="helper">Les zones du programme sont visibles directement au-dessus de la carte.</p>
+                  </div>
+                  <div id="program-legend" class="program-legend-grid"></div>
+                </div>
+                <div class="page-grid-frame">
+                  <div id="error-grid" class="page-grid"></div>
+                </div>
+              </section>
+            </div>
+          </section>
+        </section>
+
+        <section id="view-settings" class="content-view">
+          <section class="panel config-panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Entrees</p>
+                <h2>Parametres Du Moteur</h2>
+              </div>
+              <p class="muted">Quelques champs suffisent pour reconstruire toute la journee.</p>
+            </div>
+            <form id="config-form" class="form-grid">
+              <label>
+                Prenom
+                <input id="first-name" type="text" maxlength="40" placeholder="Ton prenom" />
+              </label>
+              <label>
+                Page actuelle
+                <input id="current-page" type="number" min="1" />
+              </label>
+              <label>
+                Moitie actuelle
+                <select id="current-half">
+                  <option value="haute">Haute</option>
+                  <option value="basse">Basse</option>
+                </select>
+              </label>
+              <label>
+                Nouveau / jour (demi-pages)
+                <input id="daily-new-half-pages" type="number" min="1" />
+              </label>
+              <label>
+                Jour du programme
+                <input id="program-day-index" type="number" min="1" />
+              </label>
+              <label>
+                Total de demi-pages
+                <input id="total-half-pages" type="number" min="2" />
+              </label>
+              <button class="primary-button full" type="submit">Recalculer la journee</button>
+            </form>
+          </section>
+        </section>
+      </div>
+    </div>
+
+    <aside id="page-quick-actions" class="page-quick-actions"></aside>
+    <div id="celebration-layer" class="celebration-layer" aria-hidden="true"></div>
+    <div id="toast" class="toast" aria-live="polite"></div>
+    <script src="/app.js" defer></script>
+  </body>
+</html>
