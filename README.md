@@ -1,5 +1,7 @@
 # Hifz Daily Monitor
 
+Version anglaise : [README.en.md](README.en.md)
+
 Application locale de monitoring quotidien pour le hifz.
 
 Elle ne sert pas a apprendre a ta place. Elle calcule simplement ce qu'il faut reciter aujourd'hui a partir de la position actuelle dans le programme, dans cet ordre strict :
