@@ -15,9 +15,43 @@ const DATA_DIR = path.join(__dirname, "..", "..", "data");
 const STATE_FILE = path.join(DATA_DIR, "state.json");
 const PAGE_ERROR_LEVELS = new Set(["minor", "medium", "grave"]);
 const ERROR_LEVEL_KEYS = ["minor", "medium", "grave"];
+const STORE_TEXT = {
+  fr: {
+    noValidPages: "Aucune page valide n'a ete fournie.",
+    invalidPageNumber: "Numero de page invalide.",
+    invalidBlock: "Bloc invalide.",
+    blockUnavailable: "Ce bloc n'est pas disponible aujourd'hui.",
+    validateFirst: "Valide d'abord : {{items}}.",
+    invalidWave: "Validation de vague invalide.",
+    newUnavailable: "Le nouveau n'est pas disponible aujourd'hui.",
+    dayNotComplete: "La journee n'est pas encore completement validee.",
+    invalidErrorType: "Type d'erreur invalide.",
+  },
+  en: {
+    noValidPages: "No valid page was provided.",
+    invalidPageNumber: "Invalid page number.",
+    invalidBlock: "Invalid block.",
+    blockUnavailable: "This block is not available today.",
+    validateFirst: "Validate first: {{items}}.",
+    invalidWave: "Invalid wave check.",
+    newUnavailable: "New work is not available today.",
+    dayNotComplete: "The day is not fully validated yet.",
+    invalidErrorType: "Invalid error type.",
+  },
+};
 
 function ensureDataDir() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+function getLanguage(settings = DEFAULT_SETTINGS) {
+  return settings?.language === "en" ? "en" : "fr";
+}
+
+function translate(settings, key, variables = {}) {
+  const language = getLanguage(settings);
+  const template = (STORE_TEXT[language] && STORE_TEXT[language][key]) || STORE_TEXT.fr[key] || key;
+  return String(template).replace(/\{\{(\w+)\}\}/g, (_match, token) => String(variables[token] ?? ""));
 }
 
 function createDefaultState() {
@@ -295,13 +329,13 @@ function normalizePageList(rawPages, settings = DEFAULT_SETTINGS) {
     .filter((value) => Number.isInteger(value));
 
   if (!pages.length) {
-    throw new Error("Aucune page valide n'a ete fournie.");
+    throw new Error(translate(settings, "noValidPages"));
   }
 
   const uniquePages = [...new Set(pages)].sort((left, right) => left - right);
   for (const pageNumber of uniquePages) {
     if (pageNumber < 1 || pageNumber > totalPages) {
-      throw new Error("Numero de page invalide.");
+      throw new Error(translate(settings, "invalidPageNumber"));
     }
   }
 
@@ -311,7 +345,7 @@ function normalizePageList(rawPages, settings = DEFAULT_SETTINGS) {
 function toggleBlock(blockKey) {
   return updateState((state) => {
     if (!Object.prototype.hasOwnProperty.call(state.dailyStatus.blocks, blockKey)) {
-      throw new Error("Bloc invalide.");
+      throw new Error(translate(state.settings, "invalidBlock"));
     }
 
     const plan = buildTodayPlan(state);
@@ -319,13 +353,13 @@ function toggleBlock(blockKey) {
     const block = plan.blocks[blockKey];
 
     if (!block || !block.present) {
-      throw new Error("Ce bloc n'est pas disponible aujourd'hui.");
+      throw new Error(translate(state.settings, "blockUnavailable"));
     }
 
     const isMarkingDone = !state.dailyStatus.blocks[blockKey];
     if (isMarkingDone) {
       if (block.blockedByLabels && block.blockedByLabels.length) {
-        throw new Error(`Valide d'abord : ${block.blockedByLabels.join(", ")}.`);
+        throw new Error(translate(state.settings, "validateFirst", { items: block.blockedByLabels.join(", ") }));
       }
       state.dailyStatus.blocks[blockKey] = true;
       return state;
@@ -348,7 +382,7 @@ function toggleBlock(blockKey) {
 function toggleWaveSlot(waveIndex, slotIndex) {
   return updateState((state) => {
     if (!state.dailyStatus.waves[waveIndex] || typeof state.dailyStatus.waves[waveIndex][slotIndex] !== "boolean") {
-      throw new Error("Validation de vague invalide.");
+      throw new Error(translate(state.settings, "invalidWave"));
     }
 
     const isMarkingDone = !state.dailyStatus.waves[waveIndex][slotIndex];
@@ -356,10 +390,10 @@ function toggleWaveSlot(waveIndex, slotIndex) {
       const plan = buildTodayPlan(state);
       const newBlock = plan.blocks.new;
       if (!newBlock.present) {
-        throw new Error("Le nouveau n'est pas disponible aujourd'hui.");
+        throw new Error(translate(state.settings, "newUnavailable"));
       }
       if (newBlock.blockedByLabels && newBlock.blockedByLabels.length) {
-        throw new Error(`Valide d'abord : ${newBlock.blockedByLabels.join(", ")}.`);
+        throw new Error(translate(state.settings, "validateFirst", { items: newBlock.blockedByLabels.join(", ") }));
       }
     }
 
@@ -379,7 +413,7 @@ function advanceDay() {
   return updateState((state) => {
     const plan = buildTodayPlan(state);
     if (!plan.canAdvanceDay) {
-      throw new Error("La journee n'est pas encore completement validee.");
+      throw new Error(translate(state.settings, "dayNotComplete"));
     }
 
     state.progress.currentHalfPage = plan.nextProgress.currentHalfPage;
@@ -392,7 +426,7 @@ function advanceDay() {
 function setPageError(pages, severity) {
   return updateState((state) => {
     if (!PAGE_ERROR_LEVELS.has(severity)) {
-      throw new Error("Type d'erreur invalide.");
+      throw new Error(translate(state.settings, "invalidErrorType"));
     }
 
     for (const pageNumber of normalizePageList(pages, state.settings)) {

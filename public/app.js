@@ -4,6 +4,367 @@ const state = {
   activeView: "today",
 };
 
+const I18N = {
+  fr: {
+    "hero.title": "Bismillah, voici ton plan du jour{{name}} !✨",
+    "hero.text": "Le tableau affiche seulement ce qu'il faut reciter aujourd'hui, dans l'ordre du programme.",
+    "hero.markerLabel": "Repere",
+    "hero.markerText":
+      "Le but est de cloturer la revision de l'ancien (< j-30) tout les 7 jours, la consolidation (de j-8 a j-30) tout les 3 jours puis de reviser le recent (de j-1 a j-7) puis de reviser la veille (j-1) et enfin apprendre le nouveau.",
+    "nav.today": "Aujourd'hui",
+    "nav.pages": "Pages",
+    "nav.settings": "Parametres",
+    "today.dayLabel": "Journee",
+    "today.validationTitle": "Etat De Validation",
+    "today.validationHelp": "Valide les blocs dans l'ordre, puis passe au lendemain.",
+    "today.resetButton": "Reinitialiser les validations du jour",
+    "today.advanceButton": "Valider la journee et passer au lendemain",
+    "today.routeLabel": "Ordre Du Jour",
+    "today.routeTitle": "Chemin De Recitation",
+    "today.routeHelp": "Toujours du plus ancien vers le plus neuf, sans melanger les niveaux.",
+    "route.oldTitle": "Ancien",
+    "route.oldHelp": "Pool complet avant J-30, decoupe en 7 parties visibles.",
+    "route.consolidationTitle": "Consolidation",
+    "route.consolidationHelp": "Revision des 30 derniers jours, sur la tranche J-8 a J-30.",
+    "route.recentTitle": "Recent",
+    "route.recentHelp": "Bloc continu J-1 a J-7 pour garder le fragile tres proche.",
+    "route.yesterdayTitle": "Veille",
+    "route.yesterdayHelp": "Le bloc d'hier isole, pour verifier le passage immediat.",
+    "route.newTitle": "Nouveau",
+    "route.newHelp": "Le bloc du jour, avec 3 vagues et 9 validations au total.",
+    "pages.eyebrow": "Suivi Des Erreurs",
+    "pages.title": "Carte Des Pages",
+    "pages.help":
+      "Renseigne une page apres une recitation, puis visualise a la fois les zones fragiles et les reperes du programme du jour sur tout le mushaf.",
+    "pages.quickLabel": "Saisie Rapide",
+    "pages.quickTitle": "Une page, un clic, une erreur",
+    "pages.quickHelp":
+      "Clique une page dans la grille pour ouvrir ses actions rapides, puis choisis directement Mineur, Moyenne, Grave ou Effacer.",
+    "pages.summaryLabel": "Synthese",
+    "pages.summaryTitle": "Etat De La Carte",
+    "pages.legendLabel": "Lecture",
+    "pages.legendTitle": "Lire La Carte",
+    "pages.mapLabel": "Mushaf",
+    "pages.mapTitle": "Representation Du Coran",
+    "pages.mapHelp": "Clique une page pour ouvrir les actions rapides a droite.",
+    "pages.definitionsLabel": "Definitions",
+    "pages.definitionsHelp": "Les zones du programme sont visibles directement au-dessus de la carte.",
+    "legend.noneTitle": "Neutre",
+    "legend.noneHelp": "Aucune erreur enregistree.",
+    "legend.minorTitle": "Mineur",
+    "legend.minorHelp": "Voyelle ou petite correction locale.",
+    "legend.mediumTitle": "Moyenne",
+    "legend.mediumHelp": "Erreur dans un mot ou hesitation plus nette.",
+    "legend.graveTitle": "Grave",
+    "legend.graveHelp": "Oubli, blocage ou cassure majeure.",
+    "legend.learnedTitle": "Apprise",
+    "legend.learnedHelp": "Page deja memorisee, visible meme sans erreur.",
+    "settings.eyebrow": "Entrees",
+    "settings.title": "Parametres Du Moteur",
+    "settings.help": "Quelques champs suffisent pour reconstruire toute la journee.",
+    "settings.firstNameLabel": "Prenom",
+    "settings.firstNamePlaceholder": "Ton prenom",
+    "settings.languageLabel": "Langue",
+    "settings.languageFrenchOption": "Francais",
+    "settings.languageEnglishOption": "English",
+    "settings.currentPageLabel": "Page actuelle",
+    "settings.currentHalfLabel": "Moitie actuelle",
+    "settings.upperHalfOption": "Haute",
+    "settings.lowerHalfOption": "Basse",
+    "settings.dailyNewLabel": "Nouveau / jour (demi-pages)",
+    "settings.programDayLabel": "Jour du programme",
+    "settings.totalHalfPagesLabel": "Total de demi-pages",
+    "settings.submitButton": "Recalculer la journee",
+    "route.status.notRequired": "Non requis",
+    "route.status.done": "Valide",
+    "route.status.focus": "En focus",
+    "route.status.waiting": "En attente",
+    "status.unavailable": "Indisponible",
+    "status.done": "Valide",
+    "status.locked": "Verrouille",
+    "status.pending": "A valider",
+    "lockNote": "Valide d'abord : {{items}}.",
+    "emptyNote": "Aucun bloc disponible pour cette section aujourd'hui.",
+    "meta.range": "Plage",
+    "meta.size": "Taille",
+    "toggle.undo": "Annuler la validation",
+    "toggle.validate": "Marquer comme valide",
+    "card.old.pool": "Pool ancien",
+    "card.old.rotation": "Roulement complet : {{count}} partie(s) equilibrees sur tout l'ancien > 30 jours.",
+    "card.consolidation.noRange": "Aucune plage",
+    "card.consolidation.active": "Partie active du jour",
+    "card.consolidation.inactive": "Partie inactive aujourd'hui",
+    "card.consolidation.concerned": "Partie concernee : revision des 30 derniers jours, sur la tranche J-8 a J-30.",
+    "card.consolidation.activeToday": "Partie active aujourd'hui : {{part}}",
+    "card.consolidation.blockToValidate": "Bloc a valider : {{block}}",
+    "card.new.morning": "matin",
+    "card.new.noon": "midi",
+    "card.new.evening": "soir",
+    "card.new.inProgress": "En cours",
+    "card.new.complete": "Complete",
+    "card.new.checked": "Validations completes : {{count}} / 9",
+    "card.new.rule": "Regle : les 9 emplacements doivent etre valides pour clore le nouveau du jour.",
+    "card.new.locked": "Verrouille : valide d'abord {{items}}.",
+    "summary.progress": "Progression",
+    "summary.learned": "{{count}} apprises",
+    "summary.totalPages": "{{count}} pages au total",
+    "summary.day": "Jour",
+    "summary.currentPoint": "Point actuel",
+    "summary.dailyNew": "Nouveau / jour",
+    "hero.genericName": "",
+    "hero.namedName": " {{name}}",
+    "day.completeTitle": "Journee complete.",
+    "day.completeHelper": "{{done}} / {{total}} blocs valides, le programme peut avancer.",
+    "day.completeText":
+      "Tu peux passer au lendemain. Le moteur fera avancer la demi-page actuelle et le jour du programme, puis recalculera automatiquement la rotation de l'ancien.",
+    "day.openTitle": "Journee encore ouverte.",
+    "day.openHelper": "{{done}} / {{total}} blocs valides pour aujourd'hui.",
+    "day.remaining": "Il reste a valider : {{items}}.",
+    "errorSummary.pagesWithErrors": "Pages avec erreurs",
+    "errorSummary.pagesWithErrorsHelp": "pages fragiles sur {{total}}.",
+    "errorSummary.learnedPages": "Pages apprises",
+    "errorSummary.learnedPagesHelp": "inclut le marquage automatique jusqu'a la veille.",
+    "errorSummary.minor": "Mineur",
+    "errorSummary.minorHelp": "occurrences de voyelles.",
+    "errorSummary.medium": "Moyenne",
+    "errorSummary.mediumHelp": "occurrences dans un mot.",
+    "errorSummary.grave": "Grave",
+    "errorSummary.graveHelp": "occurrences de blocage ou oubli.",
+    "page.neutral": "Neutre",
+    "page.minor": "Mineur",
+    "page.medium": "Moyenne",
+    "page.grave": "Grave",
+    "page.learned": "Apprise",
+    "page.learnedWithSeverity": "Apprise - {{severity}}",
+    "page.learnedBadge": "A",
+    "count.minor": "V",
+    "count.medium": "M",
+    "count.grave": "G",
+    "page.label": "Page {{page}}",
+    "program.old": "Ancien",
+    "program.oldShort": "Anc.",
+    "program.oldDef": "Tout ce qui est avant J-30.",
+    "program.oldToday": "Ancien du jour",
+    "program.oldTodayShort": "Anc. jour",
+    "program.oldTodayDef": "La partie d'ancien a reviser aujourd'hui.",
+    "program.consolidation": "Consolidation",
+    "program.consolidationShort": "Cons.",
+    "program.consolidationDef": "Tout ce qui est entre J-8 et J-30.",
+    "program.recent": "Recent",
+    "program.recentShort": "Recent",
+    "program.recentDef": "Tout ce qui est entre J-1 et J-7.",
+    "program.yesterday": "Veille",
+    "program.yesterdayShort": "Veille",
+    "program.yesterdayDef": "Le bloc appris hier, soit J-1.",
+    "program.new": "Nouveau",
+    "program.newShort": "Nouveau",
+    "program.newDef": "Le bloc a apprendre aujourd'hui.",
+    "quick.noneLabel": "Actions rapides",
+    "quick.noneTitle": "Aucune page active",
+    "quick.noneHelp": "Clique une page dans la grille pour ouvrir ce panneau fixe a droite.",
+    "quick.title": "Actions rapides",
+    "quick.close": "Fermer",
+    "quick.pageTitle": "Page {{page}}",
+    "quick.help": "Ajoute une erreur en un clic ou efface l'historique de cette page.",
+    "quick.minor": "Mineur",
+    "quick.medium": "Moyenne",
+    "quick.grave": "Grave",
+    "quick.clear": "Effacer",
+    "toast.pageSelected": "Page {{page}} selectionnee.",
+    "toast.pageClosed": "Page {{page}} fermee.",
+    "toast.errorAdded": "Erreur {{severity}} ajoutee a la page {{page}}.",
+    "toast.errorsCleared": "Erreurs retirees de la page {{page}}.",
+    "toast.dayRecalculated": "Journee recalculee.",
+    "toast.dayReset": "Validations du jour reinitialisees.",
+    "toast.nextDay": "Passage au jour suivant.",
+    "toast.networkError": "Erreur reseau.",
+    "error.invalidPageFormat": "Format de pages invalide.",
+    "error.invalidPageFormatExample": "Format de pages invalide. Utilise 12, 14, 20-25.",
+    "error.pageOutOfRange": "Une page est hors limite.",
+    "error.selectPageFirst": "Choisis d'abord une page.",
+    "part.label": "Partie {{number}}",
+  },
+  en: {
+    "hero.title": "Bismillah, here is your plan for today{{name}}!✨",
+    "hero.text": "This board only shows what you need to recite today, in program order.",
+    "hero.markerLabel": "Guide",
+    "hero.markerText":
+      "The goal is to complete old review (< J-30) every 7 days, consolidation (from J-8 to J-30) every 3 days, then review the recent block (from J-1 to J-7), then yesterday (J-1), and finally learn the new block.",
+    "nav.today": "Today",
+    "nav.pages": "Pages",
+    "nav.settings": "Settings",
+    "today.dayLabel": "Day",
+    "today.validationTitle": "Validation Status",
+    "today.validationHelp": "Validate the blocks in order, then move to the next day.",
+    "today.resetButton": "Reset today's validations",
+    "today.advanceButton": "Validate the day and move on",
+    "today.routeLabel": "Today's Order",
+    "today.routeTitle": "Recitation Path",
+    "today.routeHelp": "Always go from the oldest to the newest, without mixing levels.",
+    "route.oldTitle": "Old",
+    "route.oldHelp": "Full pool before J-30, split into 7 visible parts.",
+    "route.consolidationTitle": "Consolidation",
+    "route.consolidationHelp": "Review from the last 30 days, on the J-8 to J-30 range.",
+    "route.recentTitle": "Recent",
+    "route.recentHelp": "Continuous J-1 to J-7 block to keep the fragile material close.",
+    "route.yesterdayTitle": "Yesterday",
+    "route.yesterdayHelp": "Yesterday's block on its own, to verify the immediate transition.",
+    "route.newTitle": "New",
+    "route.newHelp": "Today's new block, with 3 waves and 9 checks in total.",
+    "pages.eyebrow": "Error Tracking",
+    "pages.title": "Page Map",
+    "pages.help":
+      "Log a page after recitation, then visualize both fragile zones and today's program markers across the whole mushaf.",
+    "pages.quickLabel": "Quick Input",
+    "pages.quickTitle": "One page, one click, one error",
+    "pages.quickHelp":
+      "Click a page in the grid to open quick actions, then choose Minor, Medium, Grave, or Clear.",
+    "pages.summaryLabel": "Summary",
+    "pages.summaryTitle": "Map Status",
+    "pages.legendLabel": "Legend",
+    "pages.legendTitle": "How To Read The Map",
+    "pages.mapLabel": "Mushaf",
+    "pages.mapTitle": "Quran Overview",
+    "pages.mapHelp": "Click a page to open quick actions on the right.",
+    "pages.definitionsLabel": "Definitions",
+    "pages.definitionsHelp": "Program zones are shown directly above the map.",
+    "legend.noneTitle": "Neutral",
+    "legend.noneHelp": "No recorded error.",
+    "legend.minorTitle": "Minor",
+    "legend.minorHelp": "Harakah or small local correction.",
+    "legend.mediumTitle": "Medium",
+    "legend.mediumHelp": "A word error or clearer hesitation.",
+    "legend.graveTitle": "Grave",
+    "legend.graveHelp": "Forgetting, blocking, or major break.",
+    "legend.learnedTitle": "Learned",
+    "legend.learnedHelp": "Page already memorized, even without errors.",
+    "settings.eyebrow": "Inputs",
+    "settings.title": "Engine Settings",
+    "settings.help": "A few fields are enough to rebuild the whole day.",
+    "settings.firstNameLabel": "First name",
+    "settings.firstNamePlaceholder": "Your first name",
+    "settings.languageLabel": "Language",
+    "settings.languageFrenchOption": "French",
+    "settings.languageEnglishOption": "English",
+    "settings.currentPageLabel": "Current page",
+    "settings.currentHalfLabel": "Current half",
+    "settings.upperHalfOption": "Upper",
+    "settings.lowerHalfOption": "Lower",
+    "settings.dailyNewLabel": "New / day (half-pages)",
+    "settings.programDayLabel": "Program day",
+    "settings.totalHalfPagesLabel": "Total half-pages",
+    "settings.submitButton": "Recalculate the day",
+    "route.status.notRequired": "Not required",
+    "route.status.done": "Done",
+    "route.status.focus": "In focus",
+    "route.status.waiting": "Waiting",
+    "status.unavailable": "Unavailable",
+    "status.done": "Done",
+    "status.locked": "Locked",
+    "status.pending": "To validate",
+    "lockNote": "Validate first: {{items}}.",
+    "emptyNote": "No block is available for this section today.",
+    "meta.range": "Range",
+    "meta.size": "Size",
+    "toggle.undo": "Undo validation",
+    "toggle.validate": "Mark as done",
+    "card.old.pool": "Old pool",
+    "card.old.rotation": "Full rotation: {{count}} balanced part(s) across all old material > 30 days.",
+    "card.consolidation.noRange": "No range",
+    "card.consolidation.active": "Active part today",
+    "card.consolidation.inactive": "Inactive part today",
+    "card.consolidation.concerned": "Concerned part: review of the last 30 days, on the J-8 to J-30 range.",
+    "card.consolidation.activeToday": "Active part today: {{part}}",
+    "card.consolidation.blockToValidate": "Block to validate: {{block}}",
+    "card.new.morning": "morning",
+    "card.new.noon": "midday",
+    "card.new.evening": "evening",
+    "card.new.inProgress": "In progress",
+    "card.new.complete": "Complete",
+    "card.new.checked": "Completed checks: {{count}} / 9",
+    "card.new.rule": "Rule: all 9 slots must be checked to close today's new block.",
+    "card.new.locked": "Locked: validate {{items}} first.",
+    "summary.progress": "Progress",
+    "summary.learned": "{{count}} learned",
+    "summary.totalPages": "{{count}} total pages",
+    "summary.day": "Day",
+    "summary.currentPoint": "Current point",
+    "summary.dailyNew": "New / day",
+    "hero.genericName": "",
+    "hero.namedName": " {{name}}",
+    "day.completeTitle": "Day complete.",
+    "day.completeHelper": "{{done}} / {{total}} blocks validated, the program can move on.",
+    "day.completeText":
+      "You can move to the next day. The engine will advance the current half-page and program day, then recalculate old rotation automatically.",
+    "day.openTitle": "Day still open.",
+    "day.openHelper": "{{done}} / {{total}} blocks validated for today.",
+    "day.remaining": "Still to validate: {{items}}.",
+    "errorSummary.pagesWithErrors": "Pages with errors",
+    "errorSummary.pagesWithErrorsHelp": "fragile pages out of {{total}}.",
+    "errorSummary.learnedPages": "Learned pages",
+    "errorSummary.learnedPagesHelp": "includes automatic marking up to yesterday.",
+    "errorSummary.minor": "Minor",
+    "errorSummary.minorHelp": "harakah occurrences.",
+    "errorSummary.medium": "Medium",
+    "errorSummary.mediumHelp": "word-level occurrences.",
+    "errorSummary.grave": "Grave",
+    "errorSummary.graveHelp": "blocking or forgetting occurrences.",
+    "page.neutral": "Neutral",
+    "page.minor": "Minor",
+    "page.medium": "Medium",
+    "page.grave": "Grave",
+    "page.learned": "Learned",
+    "page.learnedWithSeverity": "Learned - {{severity}}",
+    "page.learnedBadge": "L",
+    "count.minor": "Mi",
+    "count.medium": "Md",
+    "count.grave": "Gr",
+    "page.label": "Page {{page}}",
+    "program.old": "Old",
+    "program.oldShort": "Old",
+    "program.oldDef": "Everything before J-30.",
+    "program.oldToday": "Old today",
+    "program.oldTodayShort": "Old today",
+    "program.oldTodayDef": "The old part to review today.",
+    "program.consolidation": "Consolidation",
+    "program.consolidationShort": "Cons.",
+    "program.consolidationDef": "Everything from J-8 to J-30.",
+    "program.recent": "Recent",
+    "program.recentShort": "Recent",
+    "program.recentDef": "Everything from J-1 to J-7.",
+    "program.yesterday": "Yesterday",
+    "program.yesterdayShort": "Yesterday",
+    "program.yesterdayDef": "The block learned yesterday, J-1.",
+    "program.new": "New",
+    "program.newShort": "New",
+    "program.newDef": "The block to learn today.",
+    "quick.noneLabel": "Quick actions",
+    "quick.noneTitle": "No active page",
+    "quick.noneHelp": "Click a page in the grid to open this fixed panel on the right.",
+    "quick.title": "Quick actions",
+    "quick.close": "Close",
+    "quick.pageTitle": "Page {{page}}",
+    "quick.help": "Add an error with one click or clear this page's history.",
+    "quick.minor": "Minor",
+    "quick.medium": "Medium",
+    "quick.grave": "Grave",
+    "quick.clear": "Clear",
+    "toast.pageSelected": "Page {{page}} selected.",
+    "toast.pageClosed": "Page {{page}} closed.",
+    "toast.errorAdded": "{{severity}} error added to page {{page}}.",
+    "toast.errorsCleared": "Errors cleared from page {{page}}.",
+    "toast.dayRecalculated": "Day recalculated.",
+    "toast.dayReset": "Today's validations reset.",
+    "toast.nextDay": "Moved to the next day.",
+    "toast.networkError": "Network error.",
+    "error.invalidPageFormat": "Invalid page format.",
+    "error.invalidPageFormatExample": "Invalid page format. Use 12, 14, 20-25.",
+    "error.pageOutOfRange": "A page is out of range.",
+    "error.selectPageFirst": "Choose a page first.",
+    "part.label": "Part {{number}}",
+  },
+};
+
 function $(selector) {
   return document.querySelector(selector);
 }
@@ -19,6 +380,38 @@ function escapeHtml(value = "") {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function getLanguage(payload = state.payload) {
+  return payload?.settings?.language === "en" ? "en" : "fr";
+}
+
+function interpolate(template, variables = {}) {
+  return String(template).replace(/\{\{(\w+)\}\}/g, (_match, key) => String(variables[key] ?? ""));
+}
+
+function t(key, variables = {}, payload = state.payload) {
+  const language = getLanguage(payload);
+  const dictionary = I18N[language] || I18N.fr;
+  const fallback = I18N.fr[key] || key;
+  return interpolate(dictionary[key] || fallback, variables);
+}
+
+function localizeStaticUi(payload = state.payload) {
+  const language = getLanguage(payload);
+  document.documentElement.lang = language;
+
+  $all("[data-i18n]").forEach((node) => {
+    node.textContent = t(node.dataset.i18n, {}, payload);
+  });
+
+  $all("[data-i18n-placeholder]").forEach((node) => {
+    node.setAttribute("placeholder", t(node.dataset.i18nPlaceholder, {}, payload));
+  });
+
+  $all("[data-i18n-option]").forEach((node) => {
+    node.textContent = t(node.dataset.i18nOption, {}, payload);
+  });
 }
 
 function normalizeFirstName(value = "") {
@@ -79,7 +472,7 @@ async function api(path, options = {}) {
   const response = await fetch(path, config);
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload.error || "Erreur reseau.");
+    throw new Error(payload.error || t("toast.networkError"));
   }
   return payload;
 }
@@ -93,16 +486,20 @@ function showToast(message, isError = false) {
   showToast.timer = setTimeout(() => toast.classList.remove("visible"), 2400);
 }
 
-function formatHalfPageCount(value) {
+function formatHalfPageCount(value, payload = state.payload) {
   const normalized = Number(value || 0);
-  return `${normalized} demi-page${normalized === 1 ? "" : "s"}`;
+  const language = getLanguage(payload);
+  const unit = language === "en" ? (normalized === 1 ? "half-page" : "half-pages") : `demi-page${normalized === 1 ? "" : "s"}`;
+  return `${normalized} ${unit}`;
 }
 
-function formatPageCountFromHalfPages(halfPageCount) {
+function formatPageCountFromHalfPages(halfPageCount, payload = state.payload) {
   const normalized = Number(halfPageCount || 0) / 2;
   const formatted = Number.isInteger(normalized) ? String(normalized) : normalized.toFixed(1);
   const numeric = Number(formatted);
-  return `${formatted} page${numeric === 1 || numeric === 0.5 ? "" : "s"}`;
+  const language = getLanguage(payload);
+  const unit = language === "en" ? (numeric === 1 || numeric === 0.5 ? "page" : "pages") : `page${numeric === 1 || numeric === 0.5 ? "" : "s"}`;
+  return `${formatted} ${unit}`;
 }
 
 function cardClassName(blockKey, block) {
@@ -111,15 +508,15 @@ function cardClassName(blockKey, block) {
 
 function severityLabel(severity) {
   if (severity === "minor") {
-    return "Mineur";
+    return t("page.minor");
   }
   if (severity === "medium") {
-    return "Moyenne";
+    return t("page.medium");
   }
   if (severity === "grave") {
-    return "Grave";
+    return t("page.grave");
   }
-  return "Neutre";
+  return t("page.neutral");
 }
 
 function normalizePageEntry(entry) {
@@ -166,16 +563,16 @@ function parsePagesInput(rawValue, totalPages) {
     const rangeMatch = chunk.match(/^(\d+)\s*-\s*(\d+)$/);
     if (rangeMatch) {
       const start = Number.parseInt(rangeMatch[1], 10);
-      const end = Number.parseInt(rangeMatch[2], 10);
-      if (!Number.isInteger(start) || !Number.isInteger(end)) {
-        throw new Error("Format de pages invalide.");
-      }
+        const end = Number.parseInt(rangeMatch[2], 10);
+        if (!Number.isInteger(start) || !Number.isInteger(end)) {
+          throw new Error(t("error.invalidPageFormat"));
+        }
 
-      const safeStart = Math.min(start, end);
-      const safeEnd = Math.max(start, end);
-      if (safeStart < 1 || safeEnd > totalPages) {
-        throw new Error("Une page est hors limite.");
-      }
+        const safeStart = Math.min(start, end);
+        const safeEnd = Math.max(start, end);
+        if (safeStart < 1 || safeEnd > totalPages) {
+          throw new Error(t("error.pageOutOfRange"));
+        }
 
       for (let page = safeStart; page <= safeEnd; page += 1) {
         pages.push(page);
@@ -185,11 +582,11 @@ function parsePagesInput(rawValue, totalPages) {
 
     const page = Number.parseInt(chunk, 10);
     if (!Number.isInteger(page)) {
-      throw new Error("Format de pages invalide. Utilise 12, 14, 20-25.");
+      throw new Error(t("error.invalidPageFormatExample"));
     }
 
     if (page < 1 || page > totalPages) {
-      throw new Error("Une page est hors limite.");
+      throw new Error(t("error.pageOutOfRange"));
     }
 
     pages.push(page);
@@ -229,7 +626,7 @@ function syncSelectedPages(pages) {
 
 function getSelectedPages(totalPages) {
   if (!Number.isInteger(state.activePage) || state.activePage < 1 || state.activePage > totalPages) {
-    throw new Error("Choisis d'abord une page.");
+    throw new Error(t("error.selectPageFirst"));
   }
   return [state.activePage];
 }
@@ -297,45 +694,45 @@ function getProgramZones(plan) {
   return [
     {
       key: "old-pool",
-      label: "Ancien",
-      shortLabel: "Anc.",
+      label: t("program.old"),
+      shortLabel: t("program.oldShort"),
       range: blocks.old && blocks.old.poolRange ? blocks.old.poolRange : null,
-      definition: "Tout ce qui est avant J-30.",
+      definition: t("program.oldDef"),
     },
     {
       key: "old-today",
-      label: "Ancien du jour",
-      shortLabel: "Anc. jour",
+      label: t("program.oldToday"),
+      shortLabel: t("program.oldTodayShort"),
       range: blocks.old && blocks.old.range ? blocks.old.range : null,
-      definition: "La partie d'ancien a reviser aujourd'hui.",
+      definition: t("program.oldTodayDef"),
     },
     {
       key: "consolidation",
-      label: "Consolidation",
-      shortLabel: "Cons.",
+      label: t("program.consolidation"),
+      shortLabel: t("program.consolidationShort"),
       range: blocks.consolidation && blocks.consolidation.fullRange ? blocks.consolidation.fullRange : null,
-      definition: "Tout ce qui est entre J-8 et J-30.",
+      definition: t("program.consolidationDef"),
     },
     {
       key: "recent",
-      label: "Recent",
-      shortLabel: "Recent",
+      label: t("program.recent"),
+      shortLabel: t("program.recentShort"),
       range: blocks.recent && blocks.recent.range ? blocks.recent.range : null,
-      definition: "Tout ce qui est entre J-1 et J-7.",
+      definition: t("program.recentDef"),
     },
     {
       key: "yesterday",
-      label: "Veille",
-      shortLabel: "Veille",
+      label: t("program.yesterday"),
+      shortLabel: t("program.yesterdayShort"),
       range: blocks.yesterday && blocks.yesterday.range ? blocks.yesterday.range : null,
-      definition: "Le bloc appris hier, soit J-1.",
+      definition: t("program.yesterdayDef"),
     },
     {
       key: "new",
-      label: "Nouveau",
-      shortLabel: "Nouveau",
+      label: t("program.new"),
+      shortLabel: t("program.newShort"),
       range: blocks.new && blocks.new.range ? blocks.new.range : null,
-      definition: "Le bloc a apprendre aujourd'hui.",
+      definition: t("program.newDef"),
     },
   ];
 }
@@ -366,10 +763,10 @@ function buildPageStateLabel(entry, effectiveLearned) {
   }
 
   if (entry.dominantSeverity === "none") {
-    return "Apprise";
+    return t("page.learned");
   }
 
-  return `Apprise - ${severity}`;
+  return t("page.learnedWithSeverity", { severity });
 }
 
 function renderPageQuickActions(payload) {
@@ -380,9 +777,9 @@ function renderPageQuickActions(payload) {
     state.activePage = null;
     container.innerHTML = `
       <div class="quick-actions-card empty">
-        <p class="eyebrow">Actions rapides</p>
-        <strong>Aucune page active</strong>
-        <p class="helper">Clique une page dans la grille pour ouvrir ce panneau fixe a droite.</p>
+        <p class="eyebrow">${escapeHtml(t("quick.noneLabel"))}</p>
+        <strong>${escapeHtml(t("quick.noneTitle"))}</strong>
+        <p class="helper">${escapeHtml(t("quick.noneHelp"))}</p>
       </div>
     `;
     return;
@@ -398,9 +795,9 @@ function renderPageQuickActions(payload) {
     .join("");
   const countsMarkup = `
     <div class="quick-counts">
-      <span class="count-pill minor ${entry.errors.minor > 0 ? "filled" : ""}">V ${escapeHtml(entry.errors.minor)}</span>
-      <span class="count-pill medium ${entry.errors.medium > 0 ? "filled" : ""}">M ${escapeHtml(entry.errors.medium)}</span>
-      <span class="count-pill grave ${entry.errors.grave > 0 ? "filled" : ""}">G ${escapeHtml(entry.errors.grave)}</span>
+      <span class="count-pill minor ${entry.errors.minor > 0 ? "filled" : ""}">${escapeHtml(t("count.minor"))} ${escapeHtml(entry.errors.minor)}</span>
+      <span class="count-pill medium ${entry.errors.medium > 0 ? "filled" : ""}">${escapeHtml(t("count.medium"))} ${escapeHtml(entry.errors.medium)}</span>
+      <span class="count-pill grave ${entry.errors.grave > 0 ? "filled" : ""}">${escapeHtml(t("count.grave"))} ${escapeHtml(entry.errors.grave)}</span>
     </div>
   `;
 
@@ -408,11 +805,11 @@ function renderPageQuickActions(payload) {
     <div class="quick-actions-card">
       <div class="quick-actions-head">
         <div class="quick-title">
-          <p class="eyebrow">Actions rapides</p>
-          <h3>Page ${escapeHtml(page)}</h3>
-          <p class="helper">Ajoute une erreur en un clic ou efface l'historique de cette page.</p>
+          <p class="eyebrow">${escapeHtml(t("quick.title"))}</p>
+          <h3>${escapeHtml(t("quick.pageTitle", { page }))}</h3>
+          <p class="helper">${escapeHtml(t("quick.help"))}</p>
         </div>
-        <button class="quick-close" type="button" data-clear-active-page="true">Fermer</button>
+        <button class="quick-close" type="button" data-clear-active-page="true">${escapeHtml(t("quick.close"))}</button>
       </div>
       <div class="quick-status-row">
         <span class="quick-state-pill">${escapeHtml(stateLabel)}</span>
@@ -420,10 +817,10 @@ function renderPageQuickActions(payload) {
       ${countsMarkup}
       ${programTags ? `<div class="quick-program-tags">${programTags}</div>` : ""}
       <div class="quick-action-buttons">
-        <button class="quick-action-button minor" type="button" data-page-quick-action="minor" data-page="${escapeHtml(page)}">Mineur</button>
-        <button class="quick-action-button medium" type="button" data-page-quick-action="medium" data-page="${escapeHtml(page)}">Moyenne</button>
-        <button class="quick-action-button grave" type="button" data-page-quick-action="grave" data-page="${escapeHtml(page)}">Grave</button>
-        <button class="quick-action-button clear" type="button" data-page-quick-clear="${escapeHtml(page)}">Effacer</button>
+        <button class="quick-action-button minor" type="button" data-page-quick-action="minor" data-page="${escapeHtml(page)}">${escapeHtml(t("quick.minor"))}</button>
+        <button class="quick-action-button medium" type="button" data-page-quick-action="medium" data-page="${escapeHtml(page)}">${escapeHtml(t("quick.medium"))}</button>
+        <button class="quick-action-button grave" type="button" data-page-quick-action="grave" data-page="${escapeHtml(page)}">${escapeHtml(t("quick.grave"))}</button>
+        <button class="quick-action-button clear" type="button" data-page-quick-clear="${escapeHtml(page)}">${escapeHtml(t("quick.clear"))}</button>
       </div>
     </div>
   `;
@@ -596,7 +993,7 @@ function renderRouteProgress(plan) {
     if (!block.present) {
       step.classList.add("inactive");
       if (status) {
-        status.textContent = "Non requis";
+        status.textContent = t("route.status.notRequired");
       }
       return;
     }
@@ -604,7 +1001,7 @@ function renderRouteProgress(plan) {
     if (block.done) {
       step.classList.add("done");
       if (status) {
-        status.textContent = "Valide";
+        status.textContent = t("route.status.done");
       }
       return;
     }
@@ -613,29 +1010,29 @@ function renderRouteProgress(plan) {
       currentAssigned = true;
       step.classList.add("current");
       if (status) {
-        status.textContent = "En focus";
+        status.textContent = t("route.status.focus");
       }
       return;
     }
 
     step.classList.add("locked");
     if (status) {
-      status.textContent = "En attente";
+      status.textContent = t("route.status.waiting");
     }
   });
 }
 
 function statusMarkup(block) {
   if (!block.present) {
-    return '<span class="status-pill empty">Indisponible</span>';
+    return `<span class="status-pill empty">${escapeHtml(t("status.unavailable"))}</span>`;
   }
   if (block.done) {
-    return '<span class="status-pill done">Valide</span>';
+    return `<span class="status-pill done">${escapeHtml(t("status.done"))}</span>`;
   }
   if (block.locked) {
-    return '<span class="status-pill locked">Verrouille</span>';
+    return `<span class="status-pill locked">${escapeHtml(t("status.locked"))}</span>`;
   }
-  return '<span class="status-pill pending">A valider</span>';
+  return `<span class="status-pill pending">${escapeHtml(t("status.pending"))}</span>`;
 }
 
 function lockNoteMarkup(block) {
@@ -643,23 +1040,23 @@ function lockNoteMarkup(block) {
     return "";
   }
 
-  return `<p class="helper lock-note">Valide d'abord : ${escapeHtml(block.blockedByLabels.join(", "))}.</p>`;
+  return `<p class="helper lock-note">${escapeHtml(t("lockNote", { items: block.blockedByLabels.join(", ") }))}</p>`;
 }
 
 function rangeBlockMarkup(range) {
   if (!range) {
-    return '<div class="empty-note">Aucun bloc disponible pour cette section aujourd\'hui.</div>';
+    return `<div class="empty-note">${escapeHtml(t("emptyNote"))}</div>`;
   }
 
   return `
     <div class="card-meta">
       <article class="mini-chip">
-        <span class="eyebrow">Plage</span>
+        <span class="eyebrow">${escapeHtml(t("meta.range"))}</span>
         <strong>${escapeHtml(range.label)}</strong>
       </article>
       <article class="mini-chip">
-        <span class="eyebrow">Taille</span>
-        <strong>${escapeHtml(range.countLabel || formatPageCountFromHalfPages(range.count))}</strong>
+        <span class="eyebrow">${escapeHtml(t("meta.size"))}</span>
+        <strong>${escapeHtml(range.countLabel || formatPageCountFromHalfPages(range.count, state.payload))}</strong>
       </article>
     </div>
   `;
@@ -672,7 +1069,7 @@ function toggleButtonMarkup(blockKey, block) {
 
   return `
     <button class="toggle-button" type="button" data-block-key="${escapeHtml(blockKey)}" ${block.locked && !block.done ? "disabled" : ""}>
-      ${block.done ? "Annuler la validation" : "Marquer comme valide"}
+      ${escapeHtml(block.done ? t("toggle.undo") : t("toggle.validate"))}
     </button>
     ${lockNoteMarkup(block)}
   `;
@@ -700,8 +1097,8 @@ function oldCardMarkup(block) {
       <div class="card-body">
         <div class="card-head">
           <div>
-            <p class="eyebrow">${block.order}. Ancien</p>
-            <h2>Ancien</h2>
+            <p class="eyebrow">${escapeHtml(`${block.order}. ${block.title}`)}</p>
+            <h2>${escapeHtml(block.title)}</h2>
           </div>
           ${statusMarkup(block)}
         </div>
@@ -712,13 +1109,13 @@ function oldCardMarkup(block) {
             ? `
               <div class="rotation-grid">
                 <article class="rotation-chip pool">
-                  <span class="eyebrow">Pool ancien</span>
+                  <span class="eyebrow">${escapeHtml(t("card.old.pool"))}</span>
                   <strong>${escapeHtml(block.poolRange.label)}</strong>
                   <p class="helper">${escapeHtml(block.poolRange.countLabel)}</p>
                 </article>
               </div>
               <div class="summary-lines">
-                <p><strong>Roulement complet :</strong> ${escapeHtml(block.windowCount)} partie(s) equilibrees sur tout l'ancien &gt; 30 jours.</p>
+                <p>${escapeHtml(t("card.old.rotation", { count: block.windowCount }))}</p>
               </div>
               <div class="old-windows-grid">
                 ${windowsMarkup}
@@ -752,15 +1149,19 @@ function simpleCardMarkup(blockKey, block) {
 }
 
 function consolidationCardMarkup(block) {
-  const bandLabels = { A: "Partie 1", B: "Partie 2", C: "Partie 3" };
+  const bandLabels = {
+    A: t("part.label", { number: 1 }),
+    B: t("part.label", { number: 2 }),
+    C: t("part.label", { number: 3 }),
+  };
   const bands = ["A", "B", "C"].map((bandKey) => {
     const band = block.bands[bandKey];
     const isActive = block.activeBand === bandKey;
     return `
       <article class="band-chip ${isActive ? "active" : ""}">
         <span class="eyebrow">${escapeHtml(bandLabels[bandKey] || bandKey)}</span>
-        <strong>${band ? escapeHtml(band.label) : "Aucune plage"}</strong>
-        <p class="helper">${isActive ? "Partie active du jour" : "Partie inactive aujourd'hui"}</p>
+        <strong>${band ? escapeHtml(band.label) : escapeHtml(t("card.consolidation.noRange"))}</strong>
+        <p class="helper">${escapeHtml(isActive ? t("card.consolidation.active") : t("card.consolidation.inactive"))}</p>
       </article>
     `;
   });
@@ -770,8 +1171,8 @@ function consolidationCardMarkup(block) {
       <div class="card-body">
         <div class="card-head">
           <div>
-            <p class="eyebrow">${block.order}. Consolidation</p>
-            <h2>Consolidation</h2>
+            <p class="eyebrow">${escapeHtml(`${block.order}. ${block.title}`)}</p>
+            <h2>${escapeHtml(block.title)}</h2>
           </div>
           ${statusMarkup(block)}
         </div>
@@ -781,9 +1182,9 @@ function consolidationCardMarkup(block) {
           block.fullRange
             ? `
               <div class="summary-lines">
-                <p><strong>Partie concernee :</strong> revision des 30 derniers jours, sur la tranche J-8 a J-30.</p>
-                <p><strong>Partie active aujourd'hui :</strong> ${escapeHtml(bandLabels[block.activeBand] || "-")}</p>
-                <p><strong>Bloc a valider :</strong> ${escapeHtml(block.activeRange ? block.activeRange.label : "Aucun")}</p>
+                <p>${escapeHtml(t("card.consolidation.concerned"))}</p>
+                <p>${escapeHtml(t("card.consolidation.activeToday", { part: bandLabels[block.activeBand] || "-" }))}</p>
+                <p>${escapeHtml(t("card.consolidation.blockToValidate", { block: block.activeRange ? block.activeRange.label : t("card.consolidation.noRange") }))}</p>
               </div>
               <div class="band-grid">${bands.join("")}</div>
             `
@@ -796,7 +1197,7 @@ function consolidationCardMarkup(block) {
 }
 
 function newCardMarkup(block) {
-  const waveMoments = ["matin", "midi", "soir"];
+  const waveMoments = [t("card.new.morning"), t("card.new.noon"), t("card.new.evening")];
   const waveCards = block.waves.map((wave, waveIndex) => {
     const slots = wave.slots.map((slot) => {
       return `
@@ -815,8 +1216,8 @@ function newCardMarkup(block) {
     return `
       <article class="wave-card ${wave.complete ? "complete" : ""}">
         <div>
-          <p class="eyebrow">${escapeHtml(`${wave.label} - ${waveMoments[waveIndex] || "journee"}`)}</p>
-          <h3>${wave.complete ? "Complete" : "En cours"}</h3>
+          <p class="eyebrow">${escapeHtml(`${wave.label} - ${waveMoments[waveIndex] || ""}`)}</p>
+          <h3>${escapeHtml(wave.complete ? t("card.new.complete") : t("card.new.inProgress"))}</h3>
         </div>
         <div class="slot-grid">${slots.join("")}</div>
       </article>
@@ -828,8 +1229,8 @@ function newCardMarkup(block) {
       <div class="card-body">
         <div class="card-head">
           <div>
-            <p class="eyebrow">${block.order}. Nouveau</p>
-            <h2>Nouveau</h2>
+            <p class="eyebrow">${escapeHtml(`${block.order}. ${block.title}`)}</p>
+            <h2>${escapeHtml(block.title)}</h2>
           </div>
           ${statusMarkup(block)}
         </div>
@@ -839,9 +1240,9 @@ function newCardMarkup(block) {
           block.present
             ? `
               <div class="summary-lines">
-                <p><strong>Validations completes :</strong> ${escapeHtml(block.checkedCount)} / 9</p>
-                <p><strong>Regle :</strong> les 9 emplacements doivent etre valides pour clore le nouveau du jour.</p>
-                ${block.locked && block.blockedByLabels?.length ? `<p><strong>Verrouille :</strong> valide d'abord ${escapeHtml(block.blockedByLabels.join(", "))}.</p>` : ""}
+                <p>${escapeHtml(t("card.new.checked", { count: block.checkedCount }))}</p>
+                <p>${escapeHtml(t("card.new.rule"))}</p>
+                ${block.locked && block.blockedByLabels?.length ? `<p>${escapeHtml(t("card.new.locked", { items: block.blockedByLabels.join(", ") }))}</p>` : ""}
               </div>
               <div class="wave-grid">${waveCards.join("")}</div>
             `
@@ -862,27 +1263,27 @@ function renderSummary(payload) {
       <article class="summary-progress tone-${escapeHtml(rank.tone)} ${plan.canAdvanceDay ? "complete" : ""}">
         <div class="summary-progress-head">
           <div class="summary-progress-copy">
-            <span class="eyebrow">Progression</span>
-            <strong>${escapeHtml(formatPageCountFromHalfPages(metrics.learnedHalfPages))} apprises</strong>
+            <span class="eyebrow">${escapeHtml(t("summary.progress", {}, payload))}</span>
+            <strong>${escapeHtml(t("summary.learned", { count: formatPageCountFromHalfPages(metrics.learnedHalfPages, payload) }, payload))}</strong>
           </div>
           <span class="summary-progress-value">${escapeHtml(`${metrics.learnedPercent}%`)}</span>
         </div>
         <div class="summary-progress-track" aria-hidden="true">
           <span class="summary-progress-fill" style="width:${escapeHtml(metrics.learnedPercent)}%;"></span>
         </div>
-        <p class="summary-progress-note">${escapeHtml(plan.summary.totalPages)} pages au total</p>
+        <p class="summary-progress-note">${escapeHtml(t("summary.totalPages", { count: plan.summary.totalPages }, payload))}</p>
       </article>
       <div class="summary-grid">
         <article class="summary-chip">
-          <span class="eyebrow">Jour</span>
+          <span class="eyebrow">${escapeHtml(t("summary.day", {}, payload))}</span>
           <strong>${escapeHtml(plan.summary.programDayIndex)}</strong>
         </article>
         <article class="summary-chip">
-          <span class="eyebrow">Point actuel</span>
+          <span class="eyebrow">${escapeHtml(t("summary.currentPoint", {}, payload))}</span>
           <strong>${escapeHtml(plan.summary.currentHalfPageLabel)}</strong>
         </article>
         <article class="summary-chip">
-          <span class="eyebrow">Nouveau / jour</span>
+          <span class="eyebrow">${escapeHtml(t("summary.dailyNew", {}, payload))}</span>
           <strong>${escapeHtml(plan.summary.dailyNewLabel)}</strong>
         </article>
       </div>
@@ -892,6 +1293,13 @@ function renderSummary(payload) {
 
 function renderHero(payload) {
   const firstName = normalizeFirstName(payload?.settings?.firstName || "");
+  if (getLanguage(payload) === "en") {
+    $("#hero-title").innerHTML = firstName
+      ? `Bismillah, here is your plan for today ${escapeHtml(firstName)}!&#10024;`
+      : "Bismillah, here is your plan for today!&#10024;";
+    return;
+  }
+
   $("#hero-title").innerHTML = firstName
     ? `Bismillah, voici ton plan du jour ${escapeHtml(firstName)} !&#10024;`
     : "Bismillah, voici ton plan du jour !&#10024;";
@@ -902,37 +1310,37 @@ function renderDayStatus(payload) {
   const metrics = getDashboardMetrics(payload);
   const missing = [];
   if (!plan.blocks.old.done) {
-    missing.push("Ancien");
+    missing.push(plan.blocks.old.title);
   }
   if (!plan.blocks.consolidation.done) {
-    missing.push("Consolidation");
+    missing.push(plan.blocks.consolidation.title);
   }
   if (!plan.blocks.recent.done) {
-    missing.push("Recent");
+    missing.push(plan.blocks.recent.title);
   }
   if (!plan.blocks.yesterday.done) {
-    missing.push("Veille");
+    missing.push(plan.blocks.yesterday.title);
   }
   if (!plan.blocks.new.done) {
-    missing.push("Nouveau");
+    missing.push(plan.blocks.new.title);
   }
 
   $("#day-status").innerHTML = plan.canAdvanceDay
     ? `
-        <strong>Journee complete.</strong>
+        <strong>${escapeHtml(t("day.completeTitle", {}, payload))}</strong>
         <div class="status-progress">
           <div class="progress-bar green large"><span style="width: 100%"></span></div>
-          <p class="helper">${escapeHtml(metrics.completedKeys.length)} / ${escapeHtml(metrics.presentKeys.length)} blocs valides, le programme peut avancer.</p>
+          <p class="helper">${escapeHtml(t("day.completeHelper", { done: metrics.completedKeys.length, total: metrics.presentKeys.length }, payload))}</p>
         </div>
-        <p>Tu peux passer au lendemain. Le moteur fera avancer la demi-page actuelle et le jour du programme, puis recalculera automatiquement la rotation de l'ancien.</p>
+        <p>${escapeHtml(t("day.completeText", {}, payload))}</p>
       `
     : `
-        <strong>Journee encore ouverte.</strong>
+        <strong>${escapeHtml(t("day.openTitle", {}, payload))}</strong>
         <div class="status-progress">
           <div class="progress-bar gold large"><span style="width: ${escapeHtml(metrics.dailyPercent)}%"></span></div>
-          <p class="helper">${escapeHtml(metrics.completedKeys.length)} / ${escapeHtml(metrics.presentKeys.length)} blocs valides pour aujourd'hui.</p>
+          <p class="helper">${escapeHtml(t("day.openHelper", { done: metrics.completedKeys.length, total: metrics.presentKeys.length }, payload))}</p>
         </div>
-        <p>Il reste a valider : ${escapeHtml(missing.join(", "))}.</p>
+        <p>${escapeHtml(t("day.remaining", { items: missing.join(", ") }, payload))}</p>
       `;
 
   $("#advance-button").disabled = !plan.canAdvanceDay;
@@ -971,16 +1379,16 @@ function renderErrorTracking(payload) {
         data-page-cell="${escapeHtml(page)}"
         data-severity="${escapeHtml(entry.dominantSeverity)}"
         data-learned="${escapeHtml(effectiveLearned)}"
-        title="Page ${escapeHtml(page)} - ${escapeHtml(stateLabel)}${escapeHtml(programTitleSuffix)}"
+        title="${escapeHtml(t("page.label", { page }, payload))} - ${escapeHtml(stateLabel)}${escapeHtml(programTitleSuffix)}"
       >
         <span class="page-cell-number">${escapeHtml(page)}</span>
-        ${effectiveLearned ? '<span class="learned-badge">A</span>' : ""}
+        ${effectiveLearned ? `<span class="learned-badge">${escapeHtml(t("page.learnedBadge", {}, payload))}</span>` : ""}
         <span class="page-cell-state">${escapeHtml(stateLabel)}</span>
         ${programTags ? `<span class="page-cell-program">${programTags}</span>` : ""}
         <span class="page-cell-counts">
-          <span class="count-pill minor ${entry.errors.minor > 0 ? "filled" : ""}">V ${escapeHtml(entry.errors.minor)}</span>
-          <span class="count-pill medium ${entry.errors.medium > 0 ? "filled" : ""}">M ${escapeHtml(entry.errors.medium)}</span>
-          <span class="count-pill grave ${entry.errors.grave > 0 ? "filled" : ""}">G ${escapeHtml(entry.errors.grave)}</span>
+          <span class="count-pill minor ${entry.errors.minor > 0 ? "filled" : ""}">${escapeHtml(t("count.minor", {}, payload))} ${escapeHtml(entry.errors.minor)}</span>
+          <span class="count-pill medium ${entry.errors.medium > 0 ? "filled" : ""}">${escapeHtml(t("count.medium", {}, payload))} ${escapeHtml(entry.errors.medium)}</span>
+          <span class="count-pill grave ${entry.errors.grave > 0 ? "filled" : ""}">${escapeHtml(t("count.grave", {}, payload))} ${escapeHtml(entry.errors.grave)}</span>
         </span>
       </button>
     `);
@@ -988,29 +1396,29 @@ function renderErrorTracking(payload) {
 
   $("#error-summary").innerHTML = `
     <article class="summary-chip error-summary-chip neutral">
-      <span class="eyebrow">Pages avec erreurs</span>
+      <span class="eyebrow">${escapeHtml(t("errorSummary.pagesWithErrors", {}, payload))}</span>
       <strong>${escapeHtml(summary.pagesWithErrors)}</strong>
-      <p class="summary-note">pages fragiles sur ${escapeHtml(totalPages)}.</p>
+      <p class="summary-note">${escapeHtml(t("errorSummary.pagesWithErrorsHelp", { total: totalPages }, payload))}</p>
     </article>
     <article class="summary-chip error-summary-chip learned">
-      <span class="eyebrow">Pages apprises</span>
+      <span class="eyebrow">${escapeHtml(t("errorSummary.learnedPages", {}, payload))}</span>
       <strong>${escapeHtml(effectiveLearnedPages)}</strong>
-      <p class="summary-note">inclut le marquage automatique jusqu'a la veille.</p>
+      <p class="summary-note">${escapeHtml(t("errorSummary.learnedPagesHelp", {}, payload))}</p>
     </article>
     <article class="summary-chip error-summary-chip minor">
-      <span class="eyebrow">Mineur</span>
+      <span class="eyebrow">${escapeHtml(t("errorSummary.minor", {}, payload))}</span>
       <strong>${escapeHtml(summary.minor)}</strong>
-      <p class="summary-note">occurrences de voyelles.</p>
+      <p class="summary-note">${escapeHtml(t("errorSummary.minorHelp", {}, payload))}</p>
     </article>
     <article class="summary-chip error-summary-chip medium">
-      <span class="eyebrow">Moyenne</span>
+      <span class="eyebrow">${escapeHtml(t("errorSummary.medium", {}, payload))}</span>
       <strong>${escapeHtml(summary.medium)}</strong>
-      <p class="summary-note">occurrences dans un mot.</p>
+      <p class="summary-note">${escapeHtml(t("errorSummary.mediumHelp", {}, payload))}</p>
     </article>
     <article class="summary-chip error-summary-chip grave">
-      <span class="eyebrow">Grave</span>
+      <span class="eyebrow">${escapeHtml(t("errorSummary.grave", {}, payload))}</span>
       <strong>${escapeHtml(summary.grave)}</strong>
-      <p class="summary-note">occurrences de blocage ou oubli.</p>
+      <p class="summary-note">${escapeHtml(t("errorSummary.graveHelp", {}, payload))}</p>
     </article>
   `;
 
@@ -1038,6 +1446,7 @@ function renderCards(payload) {
 
 function fillForm(payload) {
   $("#first-name").value = payload.settings.firstName || "";
+  $("#language").value = getLanguage(payload);
   $("#current-page").value = getCurrentPageFromHalfPage(payload.progress.currentHalfPage, payload.settings.totalHalfPages);
   $("#current-half").value = getCurrentHalfLabelFromHalfPage(payload.progress.currentHalfPage, payload.settings.totalHalfPages);
   $("#daily-new-half-pages").value = payload.settings.dailyNewHalfPages;
@@ -1054,7 +1463,7 @@ function bindPageCellSelection() {
       renderErrorTracking(state.payload);
       bindPageQuickActions();
       bindPageCellSelection();
-      showToast(state.activePage ? `Page ${page} selectionnee.` : `Page ${page} fermee.`);
+      showToast(state.activePage ? t("toast.pageSelected", { page }) : t("toast.pageClosed", { page }));
     });
   });
 }
@@ -1071,7 +1480,12 @@ function bindPageQuickActions() {
           }),
         });
         render();
-        showToast(`Erreur ${button.textContent.toLowerCase()} ajoutee a la page ${button.dataset.page}.`);
+        showToast(
+          t("toast.errorAdded", {
+            severity: severityLabel(String(button.dataset.pageQuickAction || "")),
+            page: button.dataset.page,
+          }),
+        );
       } catch (error) {
         showToast(error.message, true);
       }
@@ -1088,7 +1502,7 @@ function bindPageQuickActions() {
           }),
         });
         render();
-        showToast(`Erreurs retirees de la page ${button.dataset.pageQuickClear}.`);
+        showToast(t("toast.errorsCleared", { page: button.dataset.pageQuickClear }));
       } catch (error) {
         showToast(error.message, true);
       }
@@ -1168,6 +1582,7 @@ function bindDynamicActions() {
 
 function render() {
   document.body.classList.toggle("day-complete", Boolean(state.payload?.plan?.canAdvanceDay));
+  localizeStaticUi(state.payload);
   renderHero(state.payload);
   renderSummary(state.payload);
   renderDayStatus(state.payload);
@@ -1188,6 +1603,7 @@ function bindStaticActions() {
         body: JSON.stringify({
           settings: {
             firstName: $("#first-name").value,
+            language: $("#language").value,
             dailyNewHalfPages: Number($("#daily-new-half-pages").value),
             totalHalfPages: Number($("#total-half-pages").value),
           },
@@ -1198,7 +1614,7 @@ function bindStaticActions() {
         }),
       });
       render();
-      showToast("Journee recalculee.");
+      showToast(t("toast.dayRecalculated"));
     } catch (error) {
       showToast(error.message, true);
     }
@@ -1208,7 +1624,7 @@ function bindStaticActions() {
     try {
       state.payload = await api("/api/reset-today", { method: "POST" });
       render();
-      showToast("Validations du jour reinitialisees.");
+      showToast(t("toast.dayReset"));
     } catch (error) {
       showToast(error.message, true);
     }
@@ -1218,7 +1634,7 @@ function bindStaticActions() {
     try {
       state.payload = await api("/api/advance-day", { method: "POST" });
       render();
-      showToast("Passage au jour suivant.");
+      showToast(t("toast.nextDay"));
     } catch (error) {
       showToast(error.message, true);
     }

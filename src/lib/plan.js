@@ -2,6 +2,7 @@ const DEFAULT_SETTINGS = {
   dailyNewHalfPages: 1,
   totalHalfPages: 1200,
   firstName: "",
+  language: "fr",
 };
 
 const OLD_WINDOW_TARGET = 7;
@@ -9,6 +10,75 @@ const OLD_WINDOW_TARGET = 7;
 const DEFAULT_PROGRESS = {
   currentHalfPage: 1,
   programDayIndex: 1,
+};
+
+const PLAN_TEXT = {
+  fr: {
+    halfPageSingular: "demi-page",
+    halfPagePlural: "demi-pages",
+    pageSingular: "page",
+    pagePlural: "pages",
+    upperHalf: "haute",
+    lowerHalf: "basse",
+    pageLabel: "Page {{page}}",
+    halfPageLabel: "Page {{page}} moitie {{half}}",
+    pageRangeLabel: "Page {{start}} -> Page {{end}}",
+    partLabel: "Partie {{number}}",
+    waveLabel: "Vague {{number}}",
+    validationLabel: "Validation {{number}}",
+    titleOld: "Ancien",
+    titleConsolidation: "Consolidation",
+    titleRecent: "Recent",
+    titleYesterday: "Veille",
+    titleNew: "Nouveau",
+    oldHelper: "Rotation automatique en 7 parties equilibrees sur tout l'ancien situe avant J-30.",
+    oldEmpty: "Pas encore d'ancien disponible.",
+    consolidationHelper:
+      "Revision de la partie des 30 derniers jours : la consolidation couvre J-8 a J-30, avec une seule partie active a valider aujourd'hui.",
+    consolidationEmpty: "Pas encore de partie de revision sur les 30 derniers jours (J-8 a J-30).",
+    recentHelper: "Bloc continu J-1 a J-7.",
+    recentEmpty: "Pas encore de recent disponible.",
+    yesterdayHelper: "Bloc de nouveau d'hier uniquement.",
+    yesterdayEmpty: "Pas encore de veille disponible.",
+    newHelper: "3 vagues, 3 validations par vague.",
+    newEmpty: "Plus de nouveau a attribuer.",
+    newFinished: "Nouveau termine",
+    activePartLabel: "1 partie active",
+    balancedPartsLabel: "Parties equilibrees",
+  },
+  en: {
+    halfPageSingular: "half-page",
+    halfPagePlural: "half-pages",
+    pageSingular: "page",
+    pagePlural: "pages",
+    upperHalf: "upper",
+    lowerHalf: "lower",
+    pageLabel: "Page {{page}}",
+    halfPageLabel: "Page {{page}} {{half}} half",
+    pageRangeLabel: "Page {{start}} -> Page {{end}}",
+    partLabel: "Part {{number}}",
+    waveLabel: "Wave {{number}}",
+    validationLabel: "Check {{number}}",
+    titleOld: "Old",
+    titleConsolidation: "Consolidation",
+    titleRecent: "Recent",
+    titleYesterday: "Yesterday",
+    titleNew: "New",
+    oldHelper: "Automatic rotation across 7 balanced parts over everything before J-30.",
+    oldEmpty: "No old section is available yet.",
+    consolidationHelper:
+      "Review part of the last 30 days: consolidation covers J-8 to J-30, with one active part to validate today.",
+    consolidationEmpty: "No review part is available yet for the last 30 days (J-8 to J-30).",
+    recentHelper: "Continuous block from J-1 to J-7.",
+    recentEmpty: "No recent block is available yet.",
+    yesterdayHelper: "Yesterday's new block only.",
+    yesterdayEmpty: "No yesterday block is available yet.",
+    newHelper: "3 waves, 3 checks per wave.",
+    newEmpty: "No new block remains to assign.",
+    newFinished: "New work completed",
+    activePartLabel: "1 active part",
+    balancedPartsLabel: "Balanced parts",
+  },
 };
 
 function clampInteger(value, min, max, fallback) {
@@ -19,21 +89,42 @@ function clampInteger(value, min, max, fallback) {
   return Math.min(Math.max(normalized, min), max);
 }
 
-function formatHalfPageCount(value) {
-  const normalized = Number(value || 0);
-  return `${normalized} demi-page${normalized === 1 ? "" : "s"}`;
+function normalizeLanguage(value) {
+  return value === "en" ? "en" : "fr";
 }
 
-function formatPageCountFromHalfPages(halfPageCount) {
+function interpolate(template, variables = {}) {
+  return String(template).replace(/\{\{(\w+)\}\}/g, (_match, key) => String(variables[key] ?? ""));
+}
+
+function getPlanText(language, key, variables = {}) {
+  const locale = normalizeLanguage(language);
+  const dictionary = PLAN_TEXT[locale] || PLAN_TEXT.fr;
+  const fallback = PLAN_TEXT.fr[key] || key;
+  return interpolate(dictionary[key] || fallback, variables);
+}
+
+function formatHalfPageCount(value, language = "fr") {
+  const normalized = Number(value || 0);
+  const unit =
+    normalized === 1 ? getPlanText(language, "halfPageSingular") : getPlanText(language, "halfPagePlural");
+  return `${normalized} ${unit}`;
+}
+
+function formatPageCountFromHalfPages(halfPageCount, language = "fr") {
   const normalized = Number(halfPageCount || 0) / 2;
   const formatted = Number.isInteger(normalized) ? String(normalized) : normalized.toFixed(1);
   const numeric = Number(formatted);
-  return `${formatted} page${numeric === 1 || numeric === 0.5 ? "" : "s"}`;
+  const unit =
+    numeric === 1 || numeric === 0.5 ? getPlanText(language, "pageSingular") : getPlanText(language, "pagePlural");
+  return `${formatted} ${unit}`;
 }
 
-function formatWholePageCount(pageCount) {
+function formatWholePageCount(pageCount, language = "fr") {
   const normalized = Number(pageCount || 0);
-  return `${normalized} page${normalized === 1 ? "" : "s"}`;
+  const unit =
+    normalized === 1 ? getPlanText(language, "pageSingular") : getPlanText(language, "pagePlural");
+  return `${normalized} ${unit}`;
 }
 
 function computeOldWindowCount() {
@@ -53,6 +144,7 @@ function normalizeSettings(input = {}) {
     dailyNewHalfPages: clampInteger(input.dailyNewHalfPages, 1, 20, DEFAULT_SETTINGS.dailyNewHalfPages),
     totalHalfPages: clampInteger(input.totalHalfPages, 2, 4000, DEFAULT_SETTINGS.totalHalfPages),
     firstName: normalizeShortText(input.firstName, DEFAULT_SETTINGS.firstName),
+    language: normalizeLanguage(input.language || DEFAULT_SETTINGS.language),
   };
 }
 
@@ -117,12 +209,15 @@ function halfPageToParts(index) {
   };
 }
 
-function formatHalfPage(index) {
+function formatHalfPage(index, language = "fr") {
   const parts = halfPageToParts(index);
-  return `Page ${parts.page} moitie ${parts.half}`;
+  return getPlanText(language, "halfPageLabel", {
+    page: parts.page,
+    half: getPlanText(language, parts.half === "haute" ? "upperHalf" : "lowerHalf"),
+  });
 }
 
-function formatRangeLabel(safeStart, safeEnd) {
+function formatRangeLabel(safeStart, safeEnd, language = "fr") {
   const startParts = halfPageToParts(safeStart);
   const endParts = halfPageToParts(safeEnd);
   const startsOnPageBoundary = safeStart % 2 === 1;
@@ -130,17 +225,17 @@ function formatRangeLabel(safeStart, safeEnd) {
 
   if (startsOnPageBoundary && endsOnPageBoundary) {
     if (startParts.page === endParts.page) {
-      return `Page ${startParts.page}`;
+      return getPlanText(language, "pageLabel", { page: startParts.page });
     }
-    return `Page ${startParts.page} -> Page ${endParts.page}`;
+    return getPlanText(language, "pageRangeLabel", { start: startParts.page, end: endParts.page });
   }
 
-  const startLabel = formatHalfPage(safeStart);
-  const endLabel = formatHalfPage(safeEnd);
+  const startLabel = formatHalfPage(safeStart, language);
+  const endLabel = formatHalfPage(safeEnd, language);
   return safeStart === safeEnd ? startLabel : `${startLabel} -> ${endLabel}`;
 }
 
-function createRange(start, end, totalHalfPages) {
+function createRange(start, end, totalHalfPages, language = "fr") {
   if (!Number.isFinite(start) || !Number.isFinite(end)) {
     return null;
   }
@@ -155,8 +250,8 @@ function createRange(start, end, totalHalfPages) {
     return null;
   }
 
-  const startLabel = formatHalfPage(safeStart);
-  const endLabel = formatHalfPage(safeEnd);
+  const startLabel = formatHalfPage(safeStart, language);
+  const endLabel = formatHalfPage(safeEnd, language);
   const pageCount = (safeEnd - safeStart + 1) / 2;
   return {
     start: safeStart,
@@ -165,12 +260,12 @@ function createRange(start, end, totalHalfPages) {
     pageCount,
     startLabel,
     endLabel,
-    label: formatRangeLabel(safeStart, safeEnd),
-    countLabel: formatPageCountFromHalfPages(safeEnd - safeStart + 1),
+    label: formatRangeLabel(safeStart, safeEnd, language),
+    countLabel: formatPageCountFromHalfPages(safeEnd - safeStart + 1, language),
   };
 }
 
-function createPageWindowRange(startPage, endPage, poolRange, totalHalfPages) {
+function createPageWindowRange(startPage, endPage, poolRange, totalHalfPages, language = "fr") {
   if (!poolRange || !Number.isFinite(startPage) || !Number.isFinite(endPage) || startPage > endPage) {
     return null;
   }
@@ -186,7 +281,7 @@ function createPageWindowRange(startPage, endPage, poolRange, totalHalfPages) {
 
   const startHalfPage = safeStartPage === poolPageStart ? poolRange.start : (safeStartPage - 1) * 2 + 1;
   const endHalfPage = safeEndPage === poolPageEnd ? poolRange.end : safeEndPage * 2;
-  const baseRange = createRange(startHalfPage, endHalfPage, totalHalfPages);
+  const baseRange = createRange(startHalfPage, endHalfPage, totalHalfPages, language);
 
   if (!baseRange) {
     return null;
@@ -198,12 +293,15 @@ function createPageWindowRange(startPage, endPage, poolRange, totalHalfPages) {
     pageStart: safeStartPage,
     pageEnd: safeEndPage,
     pageCount,
-    label: safeStartPage === safeEndPage ? `Page ${safeStartPage}` : `Page ${safeStartPage} -> Page ${safeEndPage}`,
-    countLabel: formatWholePageCount(pageCount),
+    label:
+      safeStartPage === safeEndPage
+        ? getPlanText(language, "pageLabel", { page: safeStartPage })
+        : getPlanText(language, "pageRangeLabel", { start: safeStartPage, end: safeEndPage }),
+    countLabel: formatWholePageCount(pageCount, language),
   };
 }
 
-function splitConsolidationBands(range, programDayIndex, totalHalfPages) {
+function splitConsolidationBands(range, programDayIndex, totalHalfPages, language = "fr") {
   const emptyResult = {
     fullRange: null,
     count: 0,
@@ -234,7 +332,8 @@ function splitConsolidationBands(range, programDayIndex, totalHalfPages) {
 
   for (let index = 0; index < bandKeys.length; index += 1) {
     const bandLength = lengths[index];
-    bands[bandKeys[index]] = bandLength > 0 ? createRange(cursor, cursor + bandLength - 1, totalHalfPages) : null;
+    bands[bandKeys[index]] =
+      bandLength > 0 ? createRange(cursor, cursor + bandLength - 1, totalHalfPages, language) : null;
     cursor += bandLength;
   }
 
@@ -248,7 +347,7 @@ function splitConsolidationBands(range, programDayIndex, totalHalfPages) {
   };
 }
 
-function buildOldBlock(oldPoolRange, programDayIndex, totalHalfPages) {
+function buildOldBlock(oldPoolRange, programDayIndex, totalHalfPages, language = "fr") {
   if (!oldPoolRange) {
     return {
       poolRange: oldPoolRange,
@@ -275,11 +374,11 @@ function buildOldBlock(oldPoolRange, programDayIndex, totalHalfPages) {
   const windows = lengths.map((length, index) => {
     const windowStartPage = pageCursor;
     const windowEndPage = pageCursor + length - 1;
-    const windowRange = createPageWindowRange(windowStartPage, windowEndPage, oldPoolRange, totalHalfPages);
+    const windowRange = createPageWindowRange(windowStartPage, windowEndPage, oldPoolRange, totalHalfPages, language);
     pageCursor += length;
     return {
       number: index + 1,
-      label: `Partie ${index + 1}`,
+      label: getPlanText(language, "partLabel", { number: index + 1 }),
       active: index === windowIndex,
       range: windowRange,
     };
@@ -287,7 +386,7 @@ function buildOldBlock(oldPoolRange, programDayIndex, totalHalfPages) {
   const range = windows[windowIndex]?.range || null;
   const nextBlock = windows[nextWindowNumber - 1]?.range || null;
 
-  const displayPoolRange = createPageWindowRange(poolPageStart, poolPageEnd, oldPoolRange, totalHalfPages);
+  const displayPoolRange = createPageWindowRange(poolPageStart, poolPageEnd, oldPoolRange, totalHalfPages, language);
 
   return {
     poolRange: displayPoolRange,
@@ -297,22 +396,22 @@ function buildOldBlock(oldPoolRange, programDayIndex, totalHalfPages) {
     windowCount,
     currentWindowNumber,
     nextWindowNumber,
-    currentWindowLabel: `Partie ${currentWindowNumber} / ${windowCount}`,
-    nextWindowLabel: `Partie ${nextWindowNumber} / ${windowCount}`,
-    windowSizeLabel: "Parties equilibrees",
+    currentWindowLabel: `${getPlanText(language, "partLabel", { number: currentWindowNumber })} / ${windowCount}`,
+    nextWindowLabel: `${getPlanText(language, "partLabel", { number: nextWindowNumber })} / ${windowCount}`,
+    windowSizeLabel: getPlanText(language, "balancedPartsLabel"),
     startsAt: range ? range.start : null,
     nextStart: nextBlock ? nextBlock.start : null,
   };
 }
 
-function buildWaves(dailyStatus) {
+function buildWaves(dailyStatus, language = "fr") {
   const waves = dailyStatus.waves.map((slots, waveIndex) => ({
     id: waveIndex + 1,
-    label: `Vague ${waveIndex + 1}`,
+    label: getPlanText(language, "waveLabel", { number: waveIndex + 1 }),
     slots: slots.map((checked, slotIndex) => ({
       index: slotIndex,
       checked,
-      label: `Validation ${slotIndex + 1}`,
+      label: getPlanText(language, "validationLabel", { number: slotIndex + 1 }),
     })),
     complete: slots.every(Boolean),
   }));
@@ -325,23 +424,24 @@ function buildWaves(dailyStatus) {
 }
 
 function buildTodayPlan({ settings, progress, dailyStatus }) {
+  const language = normalizeLanguage(settings.language);
   const q = settings.dailyNewHalfPages;
   const h = progress.currentHalfPage;
   const totalHalfPages = settings.totalHalfPages;
 
-  const newRange = createRange(h, h + q - 1, totalHalfPages);
-  const yesterdayRange = createRange(h - q, h - 1, totalHalfPages);
-  const recentRange = createRange(h - 7 * q, h - 1, totalHalfPages);
-  const consolidationRange = createRange(h - 30 * q, h - 8 * q + (q - 1), totalHalfPages);
-  const oldPoolRange = consolidationRange ? createRange(1, consolidationRange.start - 1, totalHalfPages) : null;
-  const oldBlock = buildOldBlock(oldPoolRange, progress.programDayIndex, totalHalfPages);
-  const consolidation = splitConsolidationBands(consolidationRange, progress.programDayIndex, totalHalfPages);
-  const waves = buildWaves(dailyStatus);
+  const newRange = createRange(h, h + q - 1, totalHalfPages, language);
+  const yesterdayRange = createRange(h - q, h - 1, totalHalfPages, language);
+  const recentRange = createRange(h - 7 * q, h - 1, totalHalfPages, language);
+  const consolidationRange = createRange(h - 30 * q, h - 8 * q + (q - 1), totalHalfPages, language);
+  const oldPoolRange = consolidationRange ? createRange(1, consolidationRange.start - 1, totalHalfPages, language) : null;
+  const oldBlock = buildOldBlock(oldPoolRange, progress.programDayIndex, totalHalfPages, language);
+  const consolidation = splitConsolidationBands(consolidationRange, progress.programDayIndex, totalHalfPages, language);
+  const waves = buildWaves(dailyStatus, language);
 
   const blocks = {
     old: {
       key: "old",
-      title: "Ancien",
+      title: getPlanText(language, "titleOld"),
       order: 1,
       present: Boolean(oldBlock.range),
       done: oldBlock.range ? Boolean(dailyStatus.blocks.old) : true,
@@ -357,13 +457,11 @@ function buildTodayPlan({ settings, progress, dailyStatus }) {
       startsAt: oldBlock.startsAt,
       nextStart: oldBlock.nextStart,
       nextRange: oldBlock.nextRange,
-      helper: oldBlock.range
-        ? "Rotation automatique en 7 parties equilibrees sur tout l'ancien situe avant J-30."
-        : "Pas encore d'ancien disponible.",
+      helper: oldBlock.range ? getPlanText(language, "oldHelper") : getPlanText(language, "oldEmpty"),
     },
     consolidation: {
       key: "consolidation",
-      title: "Consolidation",
+      title: getPlanText(language, "titleConsolidation"),
       order: 2,
       present: Boolean(consolidation.fullRange && consolidation.activeRange),
       done: consolidation.fullRange && consolidation.activeRange ? Boolean(dailyStatus.blocks.consolidation) : true,
@@ -372,37 +470,37 @@ function buildTodayPlan({ settings, progress, dailyStatus }) {
       activeRange: consolidation.activeRange,
       bands: consolidation.bands,
       helper: consolidation.fullRange
-        ? "Revision de la partie des 30 derniers jours : la consolidation couvre J-8 a J-30, avec une seule partie active a valider aujourd'hui."
-        : "Pas encore de partie de revision sur les 30 derniers jours (J-8 a J-30).",
+        ? getPlanText(language, "consolidationHelper")
+        : getPlanText(language, "consolidationEmpty"),
     },
     recent: {
       key: "recent",
-      title: "Recent",
+      title: getPlanText(language, "titleRecent"),
       order: 3,
       present: Boolean(recentRange),
       done: recentRange ? Boolean(dailyStatus.blocks.recent) : true,
       range: recentRange,
-      helper: recentRange ? "Bloc continu J-1 a J-7." : "Pas encore de recent disponible.",
+      helper: recentRange ? getPlanText(language, "recentHelper") : getPlanText(language, "recentEmpty"),
     },
     yesterday: {
       key: "yesterday",
-      title: "Veille",
+      title: getPlanText(language, "titleYesterday"),
       order: 4,
       present: Boolean(yesterdayRange),
       done: yesterdayRange ? Boolean(dailyStatus.blocks.yesterday) : true,
       range: yesterdayRange,
-      helper: yesterdayRange ? "Bloc de nouveau d'hier uniquement." : "Pas encore de veille disponible.",
+      helper: yesterdayRange ? getPlanText(language, "yesterdayHelper") : getPlanText(language, "yesterdayEmpty"),
     },
     new: {
       key: "new",
-      title: "Nouveau",
+      title: getPlanText(language, "titleNew"),
       order: 5,
       present: Boolean(newRange),
       done: newRange ? waves.isComplete : true,
       range: newRange,
       waves: waves.items,
       checkedCount: waves.checkedCount,
-      helper: newRange ? "3 vagues, 3 validations par vague." : "Plus de nouveau a attribuer.",
+      helper: newRange ? getPlanText(language, "newHelper") : getPlanText(language, "newEmpty"),
     },
   };
 
@@ -428,11 +526,13 @@ function buildTodayPlan({ settings, progress, dailyStatus }) {
     summary: {
       currentHalfPage: progress.currentHalfPage,
       currentHalfPageLabel:
-        progress.currentHalfPage <= totalHalfPages ? formatHalfPage(progress.currentHalfPage) : "Nouveau termine",
+        progress.currentHalfPage <= totalHalfPages
+          ? formatHalfPage(progress.currentHalfPage, language)
+          : getPlanText(language, "newFinished"),
       dailyNewHalfPages: settings.dailyNewHalfPages,
-      dailyNewLabel: formatPageCountFromHalfPages(settings.dailyNewHalfPages),
+      dailyNewLabel: formatPageCountFromHalfPages(settings.dailyNewHalfPages, language),
       oldWindowCount: computeOldWindowCount(),
-      oldDailyLabel: "1 partie active",
+      oldDailyLabel: getPlanText(language, "activePartLabel"),
       programDayIndex: progress.programDayIndex,
       totalHalfPages,
       totalPages: totalHalfPages / 2,
