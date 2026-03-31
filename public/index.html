@@ -11,24 +11,24 @@
 
     <div class="shell">
       <header class="hero panel">
-        <div class="hero-copy">
-          <p class="eyebrow">Hifz Daily Monitor</p>
-          <h1 id="hero-title">Bismillah, voici ton plan du jour !&#10024;</h1>
-          <p class="hero-text" data-i18n="hero.text">
-            Le tableau affiche seulement ce qu'il faut reciter aujourd'hui, dans l'ordre du programme.
-          </p>
-        </div>
-        <div class="hero-side">
-          <div id="summary" class="hero-summary"></div>
-          <aside class="hero-aside">
-            <p class="eyebrow" data-i18n="hero.markerLabel">Repere</p>
-            <p class="muted" data-i18n="hero.markerText">
-              Le but est de cloturer la revision de l'ancien (&lt; j-30) tout les 7 jours, la consolidation
-              (de j-8 a j-30) tout les 3 jours puis de reviser le recent (de j-1 a j-7) puis de reviser la veille
-              (j-1) et enfin apprendre le nouveau.
+        <div class="hero-grid">
+          <div class="hero-copy">
+            <p class="eyebrow">Hifz Daily Monitor</p>
+            <h1 id="hero-title">Bismillah, voici ton plan du jour !&#10024;</h1>
+            <p class="hero-text" data-i18n="hero.text">
+              Le tableau affiche seulement ce qu'il faut reciter aujourd'hui, dans l'ordre du programme.
             </p>
-          </aside>
+          </div>
+          <div id="summary" class="hero-summary"></div>
         </div>
+        <aside class="hero-guide">
+          <p class="eyebrow" data-i18n="hero.markerLabel">Repere</p>
+          <p class="muted" data-i18n="hero.markerText">
+            Le but est de cloturer la revision de l'ancien (&lt; j-30) tout les 7 jours, la consolidation
+            (de j-8 a j-30) tout les 3 jours puis de reviser le recent (de j-1 a j-7) puis de reviser la veille
+            (j-1) et enfin apprendre le nouveau.
+          </p>
+        </aside>
       </header>
 
       <section class="panel section-nav-panel">
@@ -58,6 +58,8 @@
             </aside>
 
             <div class="today-main">
+              <section id="today-focus" class="panel focus-panel"></section>
+
               <section class="panel route-panel">
                 <div class="section-head">
                   <div>
@@ -116,35 +118,31 @@
                 Renseigne une page apres une recitation, puis visualise a la fois les zones fragiles et les reperes du programme du jour sur tout le mushaf.
               </p>
             </div>
-            <div class="pages-board">
-              <aside class="pages-info-column">
-                <section class="pages-section quick-guide-card">
-                  <p class="eyebrow" data-i18n="pages.quickLabel">Saisie Rapide</p>
-                  <h3 data-i18n="pages.quickTitle">Une page, un clic, une erreur</h3>
-                  <p class="helper" data-i18n="pages.quickHelp">
-                    Clique une page dans la grille pour ouvrir ses actions rapides, puis choisis directement
-                    Mineur, Moyenne, Grave ou Effacer.
-                  </p>
-                </section>
-
-                <section class="pages-section">
+            <div class="pages-workspace">
+              <div class="pages-top-shelf">
+                <section class="pages-section pages-overview-section">
                   <div class="pages-section-head">
                     <div>
                       <p class="eyebrow" data-i18n="pages.summaryLabel">Synthese</p>
                       <h3 data-i18n="pages.summaryTitle">Etat De La Carte</h3>
                     </div>
+                    <p class="helper" data-i18n="pages.quickHelp">
+                      Clique une page dans la grille pour ouvrir ses actions rapides, puis choisis directement
+                      Mineur, Moyenne, Grave ou Effacer.
+                    </p>
                   </div>
                   <div id="error-summary" class="error-summary-grid"></div>
                 </section>
 
-                <section class="pages-section legend-section">
+                <section class="pages-section pages-reading-section">
                   <div class="pages-section-head">
                     <div>
                       <p class="eyebrow" data-i18n="pages.legendLabel">Lecture</p>
                       <h3 data-i18n="pages.legendTitle">Lire La Carte</h3>
                     </div>
+                    <p class="helper" data-i18n="pages.definitionsHelp">Les zones du programme sont visibles directement au-dessus de la carte.</p>
                   </div>
-                  <div class="legend-grid">
+                  <div class="legend-grid legend-inline-grid">
                     <article class="legend-chip">
                       <span class="severity-dot none"></span>
                       <div>
@@ -182,7 +180,7 @@
                     </article>
                   </div>
                 </section>
-              </aside>
+              </div>
 
               <section class="pages-section pages-map-section">
                 <div class="pages-section-head">
@@ -194,7 +192,10 @@
                 </div>
                 <div class="pages-map-top">
                   <div class="pages-map-note">
-                    <p class="eyebrow" data-i18n="pages.definitionsLabel">Definitions</p>
+                    <div>
+                      <p class="eyebrow" data-i18n="pages.definitionsLabel">Definitions</p>
+                      <p class="helper" data-i18n="pages.quickTitle">Une page, un clic, une erreur</p>
+                    </div>
                     <p class="helper" data-i18n="pages.definitionsHelp">Les zones du programme sont visibles directement au-dessus de la carte.</p>
                   </div>
                   <div id="program-legend" class="program-legend-grid"></div>
@@ -211,48 +212,105 @@
           <section class="panel config-panel">
             <div class="section-head">
               <div>
-                <p class="eyebrow" data-i18n="settings.eyebrow">Entrees</p>
-                <h2 data-i18n="settings.title">Parametres Du Moteur</h2>
+                <p class="eyebrow" data-i18n="settings.eyebrow">Reglages</p>
+                <h2 data-i18n="settings.title">Parametres</h2>
               </div>
-              <p class="muted" data-i18n="settings.help">Quelques champs suffisent pour reconstruire toute la journee.</p>
+              <p class="muted" data-i18n="settings.help">Ajuste ton point de depart et ton rythme, puis laisse le plan se recalculer.</p>
             </div>
-            <form id="config-form" class="form-grid">
-              <label>
-                <span data-i18n="settings.firstNameLabel">Prenom</span>
-                <input id="first-name" type="text" maxlength="40" placeholder="Ton prenom" data-i18n-placeholder="settings.firstNamePlaceholder" />
-              </label>
-              <label>
-                <span data-i18n="settings.languageLabel">Langue</span>
-                <select id="language">
-                  <option value="fr" data-i18n-option="settings.languageFrenchOption">Francais</option>
-                  <option value="en" data-i18n-option="settings.languageEnglishOption">English</option>
-                </select>
-              </label>
-              <label>
-                <span data-i18n="settings.currentPageLabel">Page actuelle</span>
-                <input id="current-page" type="number" min="1" />
-              </label>
-              <label>
-                <span data-i18n="settings.currentHalfLabel">Moitie actuelle</span>
-                <select id="current-half">
-                  <option value="haute" data-i18n-option="settings.upperHalfOption">Haute</option>
-                  <option value="basse" data-i18n-option="settings.lowerHalfOption">Basse</option>
-                </select>
-              </label>
-              <label>
-                <span data-i18n="settings.dailyNewLabel">Nouveau / jour (demi-pages)</span>
-                <input id="daily-new-half-pages" type="number" min="1" />
-              </label>
-              <label>
-                <span data-i18n="settings.programDayLabel">Jour du programme</span>
-                <input id="program-day-index" type="number" min="1" />
-              </label>
-              <label>
-                <span data-i18n="settings.totalHalfPagesLabel">Total de demi-pages</span>
-                <input id="total-half-pages" type="number" min="2" />
-              </label>
-              <button class="primary-button full" type="submit" data-i18n="settings.submitButton">Recalculer la journee</button>
-            </form>
+            <div class="settings-layout">
+              <form id="config-form" class="settings-form">
+                <section class="setup-card">
+                  <div class="setup-card-head">
+                    <div class="setup-step">1</div>
+                    <div>
+                      <p class="eyebrow" data-i18n="settings.identityLabel">Identite</p>
+                      <h3 data-i18n="settings.identityTitle">Qui apprend ?</h3>
+                    </div>
+                  </div>
+                  <p class="helper" data-i18n="settings.identityHelp">Renseigne juste le prenom et la langue de l'interface.</p>
+                  <div class="form-grid setup-grid">
+                    <label>
+                      <span data-i18n="settings.firstNameLabel">Prenom</span>
+                      <input id="first-name" type="text" maxlength="40" placeholder="Ton prenom" data-i18n-placeholder="settings.firstNamePlaceholder" />
+                    </label>
+                    <label>
+                      <span data-i18n="settings.languageLabel">Langue</span>
+                      <select id="language">
+                        <option value="fr" data-i18n-option="settings.languageFrenchOption">Francais</option>
+                        <option value="en" data-i18n-option="settings.languageEnglishOption">English</option>
+                      </select>
+                    </label>
+                  </div>
+                </section>
+
+                <section class="setup-card">
+                  <div class="setup-card-head">
+                    <div class="setup-step">2</div>
+                    <div>
+                      <p class="eyebrow" data-i18n="settings.progressLabel">Progression</p>
+                      <h3 data-i18n="settings.progressTitle">Ou en es-tu aujourd'hui ?</h3>
+                    </div>
+                  </div>
+                  <p class="helper" data-i18n="settings.progressHelp">Indique la page et la moitie a partir desquelles le plan doit repartir.</p>
+                  <div class="form-grid setup-grid">
+                    <label>
+                      <span data-i18n="settings.currentPageLabel">Page actuelle</span>
+                      <input id="current-page" type="number" min="1" />
+                    </label>
+                    <label>
+                      <span data-i18n="settings.currentHalfLabel">Moitie actuelle</span>
+                      <select id="current-half">
+                        <option value="haute" data-i18n-option="settings.upperHalfOption">Haute</option>
+                        <option value="basse" data-i18n-option="settings.lowerHalfOption">Basse</option>
+                      </select>
+                    </label>
+                    <label class="full">
+                      <span data-i18n="settings.programDayLabel">Jour du programme</span>
+                      <input id="program-day-index" type="number" min="1" />
+                    </label>
+                  </div>
+                </section>
+
+                <section class="setup-card">
+                  <div class="setup-card-head">
+                    <div class="setup-step">3</div>
+                    <div>
+                      <p class="eyebrow" data-i18n="settings.rhythmLabel">Rythme</p>
+                      <h3 data-i18n="settings.rhythmTitle">Quel rythme veux-tu tenir ?</h3>
+                    </div>
+                  </div>
+                  <p class="helper" data-i18n="settings.rhythmHelp">Choisis ta part de nouveau quotidienne, puis ajuste la taille totale si besoin.</p>
+                  <div class="preset-row" role="group" aria-label="Presets nouveau">
+                    <button class="preset-chip" type="button" data-daily-new-preset="1">0.5 page</button>
+                    <button class="preset-chip" type="button" data-daily-new-preset="2">1 page</button>
+                    <button class="preset-chip" type="button" data-daily-new-preset="4">2 pages</button>
+                  </div>
+                  <div class="form-grid setup-grid">
+                    <label>
+                      <span data-i18n="settings.dailyNewLabel">Nouveau / jour (demi-pages)</span>
+                      <input id="daily-new-half-pages" type="number" min="1" />
+                    </label>
+                    <label>
+                      <span data-i18n="settings.totalHalfPagesLabel">Total de demi-pages</span>
+                      <input id="total-half-pages" type="number" min="2" />
+                    </label>
+                  </div>
+                </section>
+
+                <button class="primary-button full" type="submit" data-i18n="settings.submitButton">Recalculer la journee</button>
+              </form>
+
+              <aside class="settings-preview">
+                <div class="settings-preview-head">
+                  <div>
+                    <p class="eyebrow" data-i18n="settings.previewLabel">Apercu</p>
+                    <h3 data-i18n="settings.previewTitle">Ce que le plan va produire</h3>
+                  </div>
+                  <p class="helper" data-i18n="settings.previewHelp">Le recap se met a jour avec l'etat actuel du programme.</p>
+                </div>
+                <div id="settings-preview" class="settings-preview-stack"></div>
+              </aside>
+            </div>
           </section>
         </section>
       </div>

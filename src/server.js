@@ -111,7 +111,7 @@ async function handleApi(req, res, url) {
 
   if (req.method === "POST" && pathname === "/api/page-errors") {
     const body = await parseBody(req);
-    sendJson(res, 200, store.setPageError(body.pages || body.page, String(body.severity || "")));
+    sendJson(res, 200, store.setPageError(body.pages || body.page, String(body.severity || ""), body.note || ""));
     return true;
   }
 

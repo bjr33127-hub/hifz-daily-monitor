@@ -15,6 +15,7 @@ const DATA_DIR = path.join(__dirname, "..", "..", "data");
 const STATE_FILE = path.join(DATA_DIR, "state.json");
 const PAGE_ERROR_LEVELS = new Set(["minor", "medium", "grave"]);
 const ERROR_LEVEL_KEYS = ["minor", "medium", "grave"];
+const MAX_PAGE_EVENTS = 24;
 const STORE_TEXT = {
   fr: {
     noValidPages: "Aucune page valide n'a ete fournie.",
@@ -245,6 +246,36 @@ function createEmptyPageEntry() {
       medium: 0,
       grave: 0,
     },
+    events: [],
+  };
+}
+
+function normalizePageNote(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 280);
+}
+
+function normalizePageEvent(rawEvent) {
+  if (!rawEvent || typeof rawEvent !== "object") {
+    return null;
+  }
+
+  const severity = PAGE_ERROR_LEVELS.has(rawEvent.severity) ? rawEvent.severity : null;
+  if (!severity) {
+    return null;
+  }
+
+  const createdAt =
+    typeof rawEvent.createdAt === "string" && rawEvent.createdAt.trim()
+      ? rawEvent.createdAt.trim()
+      : new Date().toISOString();
+
+  return {
+    severity,
+    note: normalizePageNote(rawEvent.note),
+    createdAt,
   };
 }
 
@@ -277,6 +308,13 @@ function normalizePageEntry(rawEntry) {
     }
   }
 
+  if (Array.isArray(rawEntry.events)) {
+    entry.events = rawEntry.events
+      .map((event) => normalizePageEvent(event))
+      .filter(Boolean)
+      .slice(0, MAX_PAGE_EVENTS);
+  }
+
   return hasPageEntryContent(entry) ? entry : null;
 }
 
@@ -289,7 +327,11 @@ function hasPageEntryContent(entry) {
     return true;
   }
 
-  return ERROR_LEVEL_KEYS.some((key) => Number(entry.errors?.[key] || 0) > 0);
+  if (ERROR_LEVEL_KEYS.some((key) => Number(entry.errors?.[key] || 0) > 0)) {
+    return true;
+  }
+
+  return Array.isArray(entry.events) && entry.events.length > 0;
 }
 
 function ensurePageEntry(state, pageNumber) {
@@ -423,15 +465,24 @@ function advanceDay() {
   });
 }
 
-function setPageError(pages, severity) {
+function setPageError(pages, severity, note = "") {
   return updateState((state) => {
     if (!PAGE_ERROR_LEVELS.has(severity)) {
       throw new Error(translate(state.settings, "invalidErrorType"));
     }
 
+    const normalizedNote = normalizePageNote(note);
     for (const pageNumber of normalizePageList(pages, state.settings)) {
       const entry = ensurePageEntry(state, pageNumber);
       entry.errors[severity] += 1;
+      entry.events = [
+        {
+          severity,
+          note: normalizedNote,
+          createdAt: new Date().toISOString(),
+        },
+        ...(Array.isArray(entry.events) ? entry.events : []),
+      ].slice(0, MAX_PAGE_EVENTS);
     }
     return state;
   });
@@ -444,6 +495,7 @@ function clearPageError(pages) {
       for (const key of ERROR_LEVEL_KEYS) {
         entry.errors[key] = 0;
       }
+      entry.events = [];
       prunePageEntry(state, pageNumber);
     }
     return state;

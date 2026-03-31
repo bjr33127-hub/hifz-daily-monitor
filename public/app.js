@@ -2,12 +2,14 @@ const state = {
   payload: null,
   activePage: null,
   activeView: "today",
+  quickNoteDrafts: {},
+  expandedCards: {},
 };
 
 const I18N = {
   fr: {
     "hero.title": "Bismillah, voici ton plan du jour{{name}} !✨",
-    "hero.text": "Le tableau affiche seulement ce qu'il faut reciter aujourd'hui, dans l'ordre du programme.",
+    "hero.text": "Retrouve ici uniquement ce qu'il faut reciter aujourd'hui, dans l'ordre exact du programme.",
     "hero.markerLabel": "Repere",
     "hero.markerText":
       "Le but est de cloturer la revision de l'ancien (< j-30) tout les 7 jours, la consolidation (de j-8 a j-30) tout les 3 jours puis de reviser le recent (de j-1 a j-7) puis de reviser la veille (j-1) et enfin apprendre le nouveau.",
@@ -19,6 +21,19 @@ const I18N = {
     "today.validationHelp": "Valide les blocs dans l'ordre, puis passe au lendemain.",
     "today.resetButton": "Reinitialiser les validations du jour",
     "today.advanceButton": "Valider la journee et passer au lendemain",
+    "today.focusLabel": "Maintenant",
+    "today.focusTitle": "Ce que tu fais maintenant",
+    "today.focusHelp": "Le bloc actif passe devant. Tout le reste reste visible, mais secondaire.",
+    "today.focusReady": "Bloc en focus",
+    "today.focusDoneTitle": "La journee est prete a etre cloturee",
+    "today.focusDoneHelp": "Tous les blocs du jour sont valides. Tu peux passer au lendemain.",
+    "today.focusStep": "Etape {{current}} sur {{total}}",
+    "today.focusWaveProgress": "{{count}} / 9 validations du nouveau completees.",
+    "today.focusWaveGuide": "Les vagues du nouveau se completent dans la carte ci-dessous.",
+    "today.focusValidate": "Valider ce bloc maintenant",
+    "today.focusUndo": "Retirer la validation",
+    "today.focusOpenNew": "Ouvrir les vagues du nouveau",
+    "today.focusScroll": "Aller au detail du bloc",
     "today.routeLabel": "Ordre Du Jour",
     "today.routeTitle": "Chemin De Recitation",
     "today.routeHelp": "Toujours du plus ancien vers le plus neuf, sans melanger les niveaux.",
@@ -59,14 +74,34 @@ const I18N = {
     "legend.graveHelp": "Oubli, blocage ou cassure majeure.",
     "legend.learnedTitle": "Apprise",
     "legend.learnedHelp": "Page deja memorisee, visible meme sans erreur.",
-    "settings.eyebrow": "Entrees",
-    "settings.title": "Parametres Du Moteur",
-    "settings.help": "Quelques champs suffisent pour reconstruire toute la journee.",
+    "settings.eyebrow": "Reglages",
+    "settings.title": "Parametres",
+    "settings.help": "Ajuste ton point de depart et ton rythme, puis laisse le plan se recalculer.",
     "settings.firstNameLabel": "Prenom",
     "settings.firstNamePlaceholder": "Ton prenom",
     "settings.languageLabel": "Langue",
     "settings.languageFrenchOption": "Francais",
     "settings.languageEnglishOption": "English",
+    "settings.identityLabel": "Identite",
+    "settings.identityTitle": "Qui apprend ?",
+    "settings.identityHelp": "Renseigne juste le prenom et la langue de l'interface.",
+    "settings.progressLabel": "Progression",
+    "settings.progressTitle": "Ou en es-tu aujourd'hui ?",
+    "settings.progressHelp": "Indique la page et la moitie a partir desquelles le plan doit repartir.",
+    "settings.rhythmLabel": "Rythme",
+    "settings.rhythmTitle": "Quel rythme veux-tu tenir ?",
+    "settings.rhythmHelp": "Choisis ta part de nouveau quotidienne, puis ajuste la taille totale si besoin.",
+    "settings.previewLabel": "Apercu",
+    "settings.previewTitle": "Ce que le plan va produire",
+    "settings.previewHelp": "Le recap se met a jour avec l'etat actuel du programme.",
+    "settings.previewCurrent": "Point actuel",
+    "settings.previewNew": "Nouveau du jour",
+    "settings.previewOld": "Ancien aujourd'hui",
+    "settings.previewConsolidation": "Consolidation",
+    "settings.previewRecent": "Recent",
+    "settings.previewProgramDay": "Jour de programme",
+    "settings.previewTotal": "Corpus suivi",
+    "settings.previewMissing": "Aucun bloc pour cette zone aujourd'hui.",
     "settings.currentPageLabel": "Page actuelle",
     "settings.currentHalfLabel": "Moitie actuelle",
     "settings.upperHalfOption": "Haute",
@@ -87,6 +122,8 @@ const I18N = {
     "emptyNote": "Aucun bloc disponible pour cette section aujourd'hui.",
     "meta.range": "Plage",
     "meta.size": "Taille",
+    "card.expand": "Voir le detail",
+    "card.collapse": "Replier",
     "toggle.undo": "Annuler la validation",
     "toggle.validate": "Marquer comme valide",
     "card.old.pool": "Pool ancien",
@@ -116,7 +153,7 @@ const I18N = {
     "day.completeTitle": "Journee complete.",
     "day.completeHelper": "{{done}} / {{total}} blocs valides, le programme peut avancer.",
     "day.completeText":
-      "Tu peux passer au lendemain. Le moteur fera avancer la demi-page actuelle et le jour du programme, puis recalculera automatiquement la rotation de l'ancien.",
+      "Tu peux passer au lendemain. Le plan de demain sera recalcule automatiquement a partir de ta progression.",
     "day.openTitle": "Journee encore ouverte.",
     "day.openHelper": "{{done}} / {{total}} blocs valides pour aujourd'hui.",
     "day.remaining": "Il reste a valider : {{items}}.",
@@ -159,17 +196,33 @@ const I18N = {
     "program.new": "Nouveau",
     "program.newShort": "Nouveau",
     "program.newDef": "Le bloc a apprendre aujourd'hui.",
-    "quick.noneLabel": "Actions rapides",
-    "quick.noneTitle": "Aucune page active",
-    "quick.noneHelp": "Clique une page dans la grille pour ouvrir ce panneau fixe a droite.",
-    "quick.title": "Actions rapides",
+    "quick.noneLabel": "Inspecteur",
+    "quick.noneTitle": "Aucune page selectionnee",
+    "quick.noneHelp": "Clique une page dans la grille pour afficher son contexte, ses erreurs et tes notes.",
+    "quick.title": "Inspecteur",
     "quick.close": "Fermer",
     "quick.pageTitle": "Page {{page}}",
-    "quick.help": "Ajoute une erreur en un clic ou efface l'historique de cette page.",
+    "quick.help": "Lis le contexte de la page, ajoute une erreur et laisse une note si besoin.",
+    "quick.stateLabel": "Statut actuel",
+    "quick.zoneLabel": "Zone du programme",
+    "quick.zoneEmpty": "Aucune zone marquee aujourd'hui.",
+    "quick.countsLabel": "Compteurs",
+    "quick.lastNoteLabel": "Derniere note",
+    "quick.lastNoteEmpty": "Aucune note enregistree pour cette page.",
+    "quick.noteLabel": "Note d'erreur",
+    "quick.notePlaceholder": "Ex: confusion avec une page proche, blocage au milieu...",
+    "quick.noteHelp": "Optionnel. La note sera enregistree avec la prochaine erreur ajoutee.",
+    "quick.historyLabel": "Historique recent",
+    "quick.historyEmpty": "Aucune erreur enregistree pour le moment.",
+    "quick.historyNoNote": "Sans note",
     "quick.minor": "Mineur",
+    "quick.minorHelp": "Voyelle ou correction legere",
     "quick.medium": "Moyenne",
+    "quick.mediumHelp": "Erreur dans un mot",
     "quick.grave": "Grave",
+    "quick.graveHelp": "Oubli ou blocage",
     "quick.clear": "Effacer",
+    "quick.clearHelp": "Effacer erreurs et notes",
     "toast.pageSelected": "Page {{page}} selectionnee.",
     "toast.pageClosed": "Page {{page}} fermee.",
     "toast.errorAdded": "Erreur {{severity}} ajoutee a la page {{page}}.",
@@ -186,7 +239,7 @@ const I18N = {
   },
   en: {
     "hero.title": "Bismillah, here is your plan for today{{name}}!✨",
-    "hero.text": "This board only shows what you need to recite today, in program order.",
+    "hero.text": "Find only what you need to recite today here, in the exact order of the program.",
     "hero.markerLabel": "Guide",
     "hero.markerText":
       "The goal is to complete old review (< J-30) every 7 days, consolidation (from J-8 to J-30) every 3 days, then review the recent block (from J-1 to J-7), then yesterday (J-1), and finally learn the new block.",
@@ -198,6 +251,19 @@ const I18N = {
     "today.validationHelp": "Validate the blocks in order, then move to the next day.",
     "today.resetButton": "Reset today's validations",
     "today.advanceButton": "Validate the day and move on",
+    "today.focusLabel": "Now",
+    "today.focusTitle": "What you do right now",
+    "today.focusHelp": "The active block comes first. Everything else stays visible, but secondary.",
+    "today.focusReady": "Block in focus",
+    "today.focusDoneTitle": "The day is ready to be closed",
+    "today.focusDoneHelp": "All blocks for today are validated. You can move to the next day.",
+    "today.focusStep": "Step {{current}} of {{total}}",
+    "today.focusWaveProgress": "{{count}} / 9 new checks completed.",
+    "today.focusWaveGuide": "The new waves can be completed in the card below.",
+    "today.focusValidate": "Validate this block now",
+    "today.focusUndo": "Undo validation",
+    "today.focusOpenNew": "Open the new waves",
+    "today.focusScroll": "Go to block details",
     "today.routeLabel": "Today's Order",
     "today.routeTitle": "Recitation Path",
     "today.routeHelp": "Always go from the oldest to the newest, without mixing levels.",
@@ -238,14 +304,34 @@ const I18N = {
     "legend.graveHelp": "Forgetting, blocking, or major break.",
     "legend.learnedTitle": "Learned",
     "legend.learnedHelp": "Page already memorized, even without errors.",
-    "settings.eyebrow": "Inputs",
-    "settings.title": "Engine Settings",
-    "settings.help": "A few fields are enough to rebuild the whole day.",
+    "settings.eyebrow": "Setup",
+    "settings.title": "Settings",
+    "settings.help": "Adjust your starting point and pace, then let the plan recalculate itself.",
     "settings.firstNameLabel": "First name",
     "settings.firstNamePlaceholder": "Your first name",
     "settings.languageLabel": "Language",
     "settings.languageFrenchOption": "French",
     "settings.languageEnglishOption": "English",
+    "settings.identityLabel": "Identity",
+    "settings.identityTitle": "Who is learning?",
+    "settings.identityHelp": "Just set the first name and the interface language.",
+    "settings.progressLabel": "Progress",
+    "settings.progressTitle": "Where are you today?",
+    "settings.progressHelp": "Set the page and half from which the plan should resume.",
+    "settings.rhythmLabel": "Pace",
+    "settings.rhythmTitle": "What pace do you want to keep?",
+    "settings.rhythmHelp": "Choose your daily new portion, then adjust the total size if needed.",
+    "settings.previewLabel": "Preview",
+    "settings.previewTitle": "What the plan will generate",
+    "settings.previewHelp": "This recap updates from the current program state.",
+    "settings.previewCurrent": "Current point",
+    "settings.previewNew": "Today's new",
+    "settings.previewOld": "Old today",
+    "settings.previewConsolidation": "Consolidation",
+    "settings.previewRecent": "Recent",
+    "settings.previewProgramDay": "Program day",
+    "settings.previewTotal": "Tracked corpus",
+    "settings.previewMissing": "No block for this zone today.",
     "settings.currentPageLabel": "Current page",
     "settings.currentHalfLabel": "Current half",
     "settings.upperHalfOption": "Upper",
@@ -266,6 +352,8 @@ const I18N = {
     "emptyNote": "No block is available for this section today.",
     "meta.range": "Range",
     "meta.size": "Size",
+    "card.expand": "Show details",
+    "card.collapse": "Collapse",
     "toggle.undo": "Undo validation",
     "toggle.validate": "Mark as done",
     "card.old.pool": "Old pool",
@@ -295,7 +383,7 @@ const I18N = {
     "day.completeTitle": "Day complete.",
     "day.completeHelper": "{{done}} / {{total}} blocks validated, the program can move on.",
     "day.completeText":
-      "You can move to the next day. The engine will advance the current half-page and program day, then recalculate old rotation automatically.",
+      "You can move to the next day. Tomorrow's plan will be recalculated automatically from your progress.",
     "day.openTitle": "Day still open.",
     "day.openHelper": "{{done}} / {{total}} blocks validated for today.",
     "day.remaining": "Still to validate: {{items}}.",
@@ -338,17 +426,33 @@ const I18N = {
     "program.new": "New",
     "program.newShort": "New",
     "program.newDef": "The block to learn today.",
-    "quick.noneLabel": "Quick actions",
-    "quick.noneTitle": "No active page",
-    "quick.noneHelp": "Click a page in the grid to open this fixed panel on the right.",
-    "quick.title": "Quick actions",
+    "quick.noneLabel": "Inspector",
+    "quick.noneTitle": "No page selected",
+    "quick.noneHelp": "Click a page in the grid to see its context, errors, and notes.",
+    "quick.title": "Inspector",
     "quick.close": "Close",
     "quick.pageTitle": "Page {{page}}",
-    "quick.help": "Add an error with one click or clear this page's history.",
+    "quick.help": "Review the page context, add an error, and leave a note when needed.",
+    "quick.stateLabel": "Current state",
+    "quick.zoneLabel": "Program zone",
+    "quick.zoneEmpty": "No program zone marked today.",
+    "quick.countsLabel": "Counters",
+    "quick.lastNoteLabel": "Latest note",
+    "quick.lastNoteEmpty": "No note recorded for this page yet.",
+    "quick.noteLabel": "Error note",
+    "quick.notePlaceholder": "Example: confusion with a nearby page, block in the middle...",
+    "quick.noteHelp": "Optional. This note will be saved with the next added error.",
+    "quick.historyLabel": "Recent history",
+    "quick.historyEmpty": "No error recorded yet.",
+    "quick.historyNoNote": "No note",
     "quick.minor": "Minor",
+    "quick.minorHelp": "Harakah or light correction",
     "quick.medium": "Medium",
+    "quick.mediumHelp": "Word-level mistake",
     "quick.grave": "Grave",
+    "quick.graveHelp": "Blocking or forgetting",
     "quick.clear": "Clear",
+    "quick.clearHelp": "Clear errors and notes",
     "toast.pageSelected": "Page {{page}} selected.",
     "toast.pageClosed": "Page {{page}} closed.",
     "toast.errorAdded": "{{severity}} error added to page {{page}}.",
@@ -449,6 +553,13 @@ function syncCurrentPageMax() {
   }
 }
 
+function syncDailyNewPresets() {
+  const currentValue = Number($("#daily-new-half-pages")?.value || 0);
+  $all("[data-daily-new-preset]").forEach((button) => {
+    button.classList.toggle("active", Number(button.dataset.dailyNewPreset) === currentValue);
+  });
+}
+
 function getCurrentHalfPageFromForm() {
   const totalHalfPages = Math.max(2, Number($("#total-half-pages")?.value) || 2);
   const totalPages = Math.max(1, Math.ceil(totalHalfPages / 2));
@@ -503,7 +614,23 @@ function formatPageCountFromHalfPages(halfPageCount, payload = state.payload) {
 }
 
 function cardClassName(blockKey, block) {
-  return `card card-${blockKey} ${block.done ? "done" : ""} ${block.present ? "" : "empty"} ${block.locked ? "locked" : ""}`;
+  const focus = state.payload?.plan ? getCurrentFocusBlock(state.payload.plan) : null;
+  const isCurrent = focus?.key === blockKey;
+  return `card card-${blockKey} ${block.done ? "done" : ""} ${block.present ? "" : "empty"} ${block.locked ? "locked" : ""} ${isCurrent ? "current-card" : ""}`;
+}
+
+function isCardExpanded(blockKey, block) {
+  const explicit = state.expandedCards[blockKey];
+  if (typeof explicit === "boolean") {
+    return explicit;
+  }
+
+  const focus = state.payload?.plan ? getCurrentFocusBlock(state.payload.plan) : null;
+  if (!block?.present) {
+    return false;
+  }
+
+  return focus?.key === blockKey;
 }
 
 function severityLabel(severity) {
@@ -522,6 +649,7 @@ function severityLabel(severity) {
 function normalizePageEntry(entry) {
   const safeEntry = entry && typeof entry === "object" ? entry : {};
   const errors = safeEntry.errors && typeof safeEntry.errors === "object" ? safeEntry.errors : {};
+  const events = Array.isArray(safeEntry.events) ? safeEntry.events : [];
   const normalized = {
     learned: Boolean(safeEntry.learned),
     errors: {
@@ -529,6 +657,24 @@ function normalizePageEntry(entry) {
       medium: Math.max(0, Number(errors.medium || 0)),
       grave: Math.max(0, Number(errors.grave || 0)),
     },
+    events: events
+      .map((event) => {
+        if (!event || typeof event !== "object") {
+          return null;
+        }
+
+        const severity = ["minor", "medium", "grave"].includes(event.severity) ? event.severity : null;
+        if (!severity) {
+          return null;
+        }
+
+        return {
+          severity,
+          note: String(event.note || "").trim(),
+          createdAt: typeof event.createdAt === "string" ? event.createdAt : "",
+        };
+      })
+      .filter(Boolean),
   };
 
   normalized.totalErrors = normalized.errors.minor + normalized.errors.medium + normalized.errors.grave;
@@ -540,8 +686,61 @@ function normalizePageEntry(entry) {
         : normalized.errors.minor > 0
           ? "minor"
           : "none";
+  normalized.latestEvent = normalized.events[0] || null;
+  normalized.latestNoteEvent = normalized.events.find((event) => event.note) || null;
+  normalized.hasNotes = Boolean(normalized.latestNoteEvent);
 
   return normalized;
+}
+
+function setQuickNoteDraft(page, value) {
+  if (!Number.isInteger(page) || page < 1) {
+    return;
+  }
+
+  const nextValue = String(value || "").slice(0, 280);
+
+  if (!nextValue.trim()) {
+    delete state.quickNoteDrafts[String(page)];
+    return;
+  }
+
+  state.quickNoteDrafts[String(page)] = nextValue;
+}
+
+function getQuickNoteDraft(page) {
+  if (!Number.isInteger(page) || page < 1) {
+    return "";
+  }
+
+  return String(state.quickNoteDrafts[String(page)] || "");
+}
+
+function clearQuickNoteDraft(page) {
+  if (!Number.isInteger(page) || page < 1) {
+    return;
+  }
+
+  delete state.quickNoteDrafts[String(page)];
+}
+
+function formatEventTimestamp(createdAt, payload = state.payload) {
+  if (!createdAt) {
+    return "";
+  }
+
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const locale = getLanguage(payload) === "en" ? "en-GB" : "fr-FR";
+  return new Intl.DateTimeFormat(locale, {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function uniqueSortedPages(pages) {
@@ -645,6 +844,15 @@ function setActiveView(view) {
 function getPrimaryProgramZone(programZones) {
   const priority = ["new", "yesterday", "recent", "consolidation", "old-today", "old-pool"];
   return priority.find((zoneKey) => programZones.some((zone) => zone.key === zoneKey)) || null;
+}
+
+function getPrimaryProgramZoneInfo(programZones) {
+  const zoneKey = getPrimaryProgramZone(programZones);
+  if (!zoneKey) {
+    return null;
+  }
+
+  return programZones.find((zone) => zone.key === zoneKey) || null;
 }
 
 function isLearnedFromProgram(programZones) {
@@ -769,6 +977,18 @@ function buildPageStateLabel(entry, effectiveLearned) {
   return t("page.learnedWithSeverity", { severity });
 }
 
+function buildPageGridStateLabel(entry, effectiveLearned) {
+  if (entry.dominantSeverity !== "none") {
+    return severityLabel(entry.dominantSeverity);
+  }
+
+  if (effectiveLearned) {
+    return t("page.learned");
+  }
+
+  return t("page.neutral");
+}
+
 function renderPageQuickActions(payload) {
   const container = $("#page-quick-actions");
   const totalPages = payload.errorTracking.totalPages;
@@ -788,8 +1008,11 @@ function renderPageQuickActions(payload) {
   const page = state.activePage;
   const entry = normalizePageEntry((payload.pageErrors || {})[String(page)]);
   const programZones = getPageProgramZones(payload.plan || {}, page);
+  const primaryZone = getPrimaryProgramZoneInfo(programZones);
   const effectiveLearned = entry.learned || isLearnedFromProgram(programZones);
   const stateLabel = buildPageStateLabel(entry, effectiveLearned);
+  const latestNoteEvent = entry.latestNoteEvent;
+  const noteDraft = getQuickNoteDraft(page);
   const programTags = programZones
     .map((zone) => `<span class="program-tag ${escapeHtml(zone.key)}">${escapeHtml(zone.shortLabel)}</span>`)
     .join("");
@@ -800,6 +1023,22 @@ function renderPageQuickActions(payload) {
       <span class="count-pill grave ${entry.errors.grave > 0 ? "filled" : ""}">${escapeHtml(t("count.grave"))} ${escapeHtml(entry.errors.grave)}</span>
     </div>
   `;
+  const historyMarkup = entry.events.length
+    ? entry.events
+        .slice(0, 5)
+        .map(
+          (event) => `
+            <article class="quick-history-item ${escapeHtml(event.severity)}">
+              <div class="quick-history-row">
+                <span class="quick-history-severity ${escapeHtml(event.severity)}">${escapeHtml(severityLabel(event.severity))}</span>
+                <span class="quick-history-date">${escapeHtml(formatEventTimestamp(event.createdAt, payload))}</span>
+              </div>
+              <p class="helper">${escapeHtml(event.note || t("quick.historyNoNote", {}, payload))}</p>
+            </article>
+          `,
+        )
+        .join("")
+    : `<div class="quick-empty-state">${escapeHtml(t("quick.historyEmpty", {}, payload))}</div>`;
 
   container.innerHTML = `
     <div class="quick-actions-card">
@@ -811,16 +1050,63 @@ function renderPageQuickActions(payload) {
         </div>
         <button class="quick-close" type="button" data-clear-active-page="true">${escapeHtml(t("quick.close"))}</button>
       </div>
-      <div class="quick-status-row">
-        <span class="quick-state-pill">${escapeHtml(stateLabel)}</span>
+      <div class="quick-overview-grid">
+        <article class="quick-overview-card">
+          <span class="eyebrow">${escapeHtml(t("quick.stateLabel", {}, payload))}</span>
+          <strong>${escapeHtml(stateLabel)}</strong>
+          <p class="helper">${escapeHtml(primaryZone ? primaryZone.label : t("quick.zoneEmpty", {}, payload))}</p>
+        </article>
+        <article class="quick-overview-card">
+          <span class="eyebrow">${escapeHtml(t("quick.lastNoteLabel", {}, payload))}</span>
+          ${
+            latestNoteEvent
+              ? `
+                <div class="quick-note-preview">
+                  <span class="quick-history-severity ${escapeHtml(latestNoteEvent.severity)}">${escapeHtml(severityLabel(latestNoteEvent.severity))}</span>
+                  <span class="quick-history-date">${escapeHtml(formatEventTimestamp(latestNoteEvent.createdAt, payload))}</span>
+                </div>
+                <p class="helper">${escapeHtml(latestNoteEvent.note)}</p>
+              `
+              : `<p class="helper">${escapeHtml(t("quick.lastNoteEmpty", {}, payload))}</p>`
+          }
+        </article>
       </div>
-      ${countsMarkup}
-      ${programTags ? `<div class="quick-program-tags">${programTags}</div>` : ""}
+      <div class="quick-detail-block">
+        <span class="eyebrow">${escapeHtml(t("quick.countsLabel", {}, payload))}</span>
+        ${countsMarkup}
+      </div>
+      <div class="quick-detail-block">
+        <span class="eyebrow">${escapeHtml(t("quick.zoneLabel", {}, payload))}</span>
+        ${programTags ? `<div class="quick-program-tags">${programTags}</div>` : `<p class="helper">${escapeHtml(t("quick.zoneEmpty", {}, payload))}</p>`}
+      </div>
+      <label class="quick-note-field">
+        <span class="eyebrow">${escapeHtml(t("quick.noteLabel", {}, payload))}</span>
+        <textarea class="quick-note-input" rows="4" maxlength="280" data-page-note-input="${escapeHtml(page)}" placeholder="${escapeHtml(
+          t("quick.notePlaceholder", {}, payload),
+        )}">${escapeHtml(noteDraft)}</textarea>
+        <span class="helper">${escapeHtml(t("quick.noteHelp", {}, payload))}</span>
+      </label>
       <div class="quick-action-buttons">
-        <button class="quick-action-button minor" type="button" data-page-quick-action="minor" data-page="${escapeHtml(page)}">${escapeHtml(t("quick.minor"))}</button>
-        <button class="quick-action-button medium" type="button" data-page-quick-action="medium" data-page="${escapeHtml(page)}">${escapeHtml(t("quick.medium"))}</button>
-        <button class="quick-action-button grave" type="button" data-page-quick-action="grave" data-page="${escapeHtml(page)}">${escapeHtml(t("quick.grave"))}</button>
-        <button class="quick-action-button clear" type="button" data-page-quick-clear="${escapeHtml(page)}">${escapeHtml(t("quick.clear"))}</button>
+        <button class="quick-action-button minor" type="button" data-page-quick-action="minor" data-page="${escapeHtml(page)}">
+          <span>${escapeHtml(t("quick.minor", {}, payload))}</span>
+          <small>${escapeHtml(t("quick.minorHelp", {}, payload))}</small>
+        </button>
+        <button class="quick-action-button medium" type="button" data-page-quick-action="medium" data-page="${escapeHtml(page)}">
+          <span>${escapeHtml(t("quick.medium", {}, payload))}</span>
+          <small>${escapeHtml(t("quick.mediumHelp", {}, payload))}</small>
+        </button>
+        <button class="quick-action-button grave" type="button" data-page-quick-action="grave" data-page="${escapeHtml(page)}">
+          <span>${escapeHtml(t("quick.grave", {}, payload))}</span>
+          <small>${escapeHtml(t("quick.graveHelp", {}, payload))}</small>
+        </button>
+        <button class="quick-action-button clear" type="button" data-page-quick-clear="${escapeHtml(page)}">
+          <span>${escapeHtml(t("quick.clear", {}, payload))}</span>
+          <small>${escapeHtml(t("quick.clearHelp", {}, payload))}</small>
+        </button>
+      </div>
+      <div class="quick-history-block">
+        <span class="eyebrow">${escapeHtml(t("quick.historyLabel", {}, payload))}</span>
+        <div class="quick-history-list">${historyMarkup}</div>
       </div>
     </div>
   `;
@@ -864,6 +1150,26 @@ function getDashboardMetrics(payload) {
     wavePercent: clampPercent(wavePercent),
     stablePercent: clampPercent(stablePercent),
   };
+}
+
+function getCurrentFocusBlock(plan) {
+  const order = Array.isArray(plan?.order) ? plan.order : [];
+
+  for (const key of order) {
+    const block = plan.blocks?.[key];
+    if (!block || !block.present || block.done) {
+      continue;
+    }
+
+    return {
+      key,
+      block,
+      index: order.indexOf(key) + 1,
+      total: order.filter((orderKey) => plan.blocks?.[orderKey]?.present).length,
+    };
+  }
+
+  return null;
 }
 
 function getRankFromProgress(learnedPercent) {
@@ -1022,6 +1328,109 @@ function renderRouteProgress(plan) {
   });
 }
 
+function focusActionMarkup(blockKey, block) {
+  if (!block?.present) {
+    return "";
+  }
+
+  if (blockKey === "new") {
+    return `
+      <div class="focus-action-row">
+        <button class="primary-button" type="button" data-scroll-to-card="new">${escapeHtml(t("today.focusOpenNew"))}</button>
+        <button class="secondary-button" type="button" data-scroll-to-card="new">${escapeHtml(t("today.focusScroll"))}</button>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="focus-action-row">
+      <button class="primary-button" type="button" data-focus-toggle-block="${escapeHtml(blockKey)}">
+        ${escapeHtml(block.done ? t("today.focusUndo") : t("today.focusValidate"))}
+      </button>
+      <button class="secondary-button" type="button" data-scroll-to-card="${escapeHtml(blockKey)}">${escapeHtml(t("today.focusScroll"))}</button>
+    </div>
+  `;
+}
+
+function renderTodayFocus(payload) {
+  const container = $("#today-focus");
+  const { plan } = payload;
+  const focus = getCurrentFocusBlock(plan);
+
+  if (!focus) {
+    container.innerHTML = `
+      <div class="focus-shell complete">
+        <div class="focus-copy">
+          <p class="eyebrow">${escapeHtml(t("today.focusLabel", {}, payload))}</p>
+          <h2>${escapeHtml(t("today.focusDoneTitle", {}, payload))}</h2>
+          <p class="muted">${escapeHtml(t("today.focusDoneHelp", {}, payload))}</p>
+        </div>
+        <div class="focus-meta">
+          <article class="focus-chip">
+            <span class="eyebrow">${escapeHtml(t("today.dayLabel", {}, payload))}</span>
+            <strong>${escapeHtml(t("status.done", {}, payload))}</strong>
+            <p class="helper">${escapeHtml(t("day.completeHelper", { done: plan.order.filter((key) => plan.blocks[key].present).length, total: plan.order.filter((key) => plan.blocks[key].present).length }, payload))}</p>
+          </article>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  const { key, block, index, total } = focus;
+  const focusRange = block.fullRange || block.range || block.activeRange || null;
+  const focusMeta = [];
+
+  if (focusRange) {
+    focusMeta.push(`
+      <article class="focus-chip">
+        <span class="eyebrow">${escapeHtml(t("meta.range", {}, payload))}</span>
+        <strong>${escapeHtml(focusRange.label)}</strong>
+      </article>
+    `);
+    focusMeta.push(`
+      <article class="focus-chip">
+        <span class="eyebrow">${escapeHtml(t("meta.size", {}, payload))}</span>
+        <strong>${escapeHtml(focusRange.countLabel || formatPageCountFromHalfPages(focusRange.count, payload))}</strong>
+      </article>
+    `);
+  }
+
+  focusMeta.push(`
+    <article class="focus-chip">
+      <span class="eyebrow">${escapeHtml(t("today.focusReady", {}, payload))}</span>
+      <strong>${escapeHtml(t("today.focusStep", { current: index, total }, payload))}</strong>
+    </article>
+  `);
+
+  if (key === "new") {
+    focusMeta.push(`
+      <article class="focus-chip">
+        <span class="eyebrow">${escapeHtml(block.title)}</span>
+        <strong>${escapeHtml(t("today.focusWaveProgress", { count: block.checkedCount }, payload))}</strong>
+        <p class="helper">${escapeHtml(t("today.focusWaveGuide", {}, payload))}</p>
+      </article>
+    `);
+  }
+
+  container.innerHTML = `
+    <div class="focus-shell focus-${escapeHtml(key)}">
+      <div class="focus-copy">
+        <p class="eyebrow">${escapeHtml(t("today.focusLabel", {}, payload))}</p>
+        <h2>${escapeHtml(block.title)}</h2>
+        <p class="muted">${escapeHtml(block.helper || t("today.focusHelp", {}, payload))}</p>
+        <div class="focus-status-row">
+          <span class="status-pill pending">${escapeHtml(t("today.focusReady", {}, payload))}</span>
+        </div>
+        ${focusActionMarkup(key, block)}
+      </div>
+      <div class="focus-meta">
+        ${focusMeta.join("")}
+      </div>
+    </div>
+  `;
+}
+
 function statusMarkup(block) {
   if (!block.present) {
     return `<span class="status-pill empty">${escapeHtml(t("status.unavailable"))}</span>`;
@@ -1062,6 +1471,42 @@ function rangeBlockMarkup(range) {
   `;
 }
 
+function cardRangeSummary(range) {
+  if (!range) {
+    return t("emptyNote");
+  }
+
+  return `${range.label} · ${range.countLabel || formatPageCountFromHalfPages(range.count, state.payload)}`;
+}
+
+function cardFrameMarkup({ blockKey, block, headerContent, summaryText, detailContent, footerContent = "" }) {
+  const expanded = isCardExpanded(blockKey, block);
+  const detailId = `card-details-${blockKey}`;
+  const hasDetail = Boolean(detailContent);
+
+  return `
+    <article class="${cardClassName(blockKey, block)} ${expanded ? "expanded-card" : "collapsed-card"}" id="card-${escapeHtml(blockKey)}" data-block-card="${escapeHtml(blockKey)}">
+      <div class="card-body">
+        ${headerContent}
+        <div class="card-summary-row">
+          <p class="helper card-summary-text">${escapeHtml(summaryText)}</p>
+          ${
+            hasDetail
+              ? `<button class="card-expand-button" type="button" data-card-expand="${escapeHtml(blockKey)}" aria-expanded="${expanded}" aria-controls="${escapeHtml(detailId)}">${escapeHtml(
+                  expanded ? t("card.collapse") : t("card.expand"),
+                )}</button>`
+              : ""
+          }
+        </div>
+        <div id="${escapeHtml(detailId)}" class="card-detail-stack ${expanded ? "expanded" : "collapsed"}">
+          ${detailContent}
+          ${footerContent}
+        </div>
+      </div>
+    </article>
+  `;
+}
+
 function toggleButtonMarkup(blockKey, block) {
   if (!block.present) {
     return "";
@@ -1092,60 +1537,70 @@ function oldCardMarkup(block) {
     })
     .join("");
 
-  return `
-    <article class="${cardClassName("old", block)}">
-      <div class="card-body">
-        <div class="card-head">
-          <div>
-            <p class="eyebrow">${escapeHtml(`${block.order}. ${block.title}`)}</p>
-            <h2>${escapeHtml(block.title)}</h2>
-          </div>
-          ${statusMarkup(block)}
-        </div>
-        <p class="helper">${escapeHtml(block.helper)}</p>
-        ${rangeBlockMarkup(block.range)}
-        ${
-          block.present
-            ? `
-              <div class="rotation-grid">
-                <article class="rotation-chip pool">
-                  <span class="eyebrow">${escapeHtml(t("card.old.pool"))}</span>
-                  <strong>${escapeHtml(block.poolRange.label)}</strong>
-                  <p class="helper">${escapeHtml(block.poolRange.countLabel)}</p>
-                </article>
-              </div>
-              <div class="summary-lines">
-                <p>${escapeHtml(t("card.old.rotation", { count: block.windowCount }))}</p>
-              </div>
-              <div class="old-windows-grid">
-                ${windowsMarkup}
-              </div>
-            `
-            : ""
-        }
-        ${toggleButtonMarkup("old", block)}
+  const headerContent = `
+    <div class="card-head">
+      <div>
+        <p class="eyebrow">${escapeHtml(`${block.order}. ${block.title}`)}</p>
+        <h2>${escapeHtml(block.title)}</h2>
       </div>
-    </article>
+      ${statusMarkup(block)}
+    </div>
+    <p class="helper">${escapeHtml(block.helper)}</p>
   `;
+
+  const detailContent = `
+    ${rangeBlockMarkup(block.range)}
+    ${
+      block.present
+        ? `
+          <div class="rotation-grid">
+            <article class="rotation-chip pool">
+              <span class="eyebrow">${escapeHtml(t("card.old.pool"))}</span>
+              <strong>${escapeHtml(block.poolRange.label)}</strong>
+              <p class="helper">${escapeHtml(block.poolRange.countLabel)}</p>
+            </article>
+          </div>
+          <div class="summary-lines">
+            <p>${escapeHtml(t("card.old.rotation", { count: block.windowCount }))}</p>
+          </div>
+          <div class="old-windows-grid">
+            ${windowsMarkup}
+          </div>
+        `
+        : ""
+    }
+  `;
+
+  return cardFrameMarkup({
+    blockKey: "old",
+    block,
+    headerContent,
+    summaryText: cardRangeSummary(block.range),
+    detailContent,
+    footerContent: toggleButtonMarkup("old", block),
+  });
 }
 
 function simpleCardMarkup(blockKey, block) {
-  return `
-    <article class="${cardClassName(blockKey, block)}">
-      <div class="card-body">
-        <div class="card-head">
-          <div>
-            <p class="eyebrow">${block.order}. ${escapeHtml(block.title)}</p>
-            <h2>${escapeHtml(block.title)}</h2>
-          </div>
-          ${statusMarkup(block)}
-        </div>
-        <p class="helper">${escapeHtml(block.helper)}</p>
-        ${rangeBlockMarkup(block.range)}
-        ${toggleButtonMarkup(blockKey, block)}
+  const headerContent = `
+    <div class="card-head">
+      <div>
+        <p class="eyebrow">${block.order}. ${escapeHtml(block.title)}</p>
+        <h2>${escapeHtml(block.title)}</h2>
       </div>
-    </article>
+      ${statusMarkup(block)}
+    </div>
+    <p class="helper">${escapeHtml(block.helper)}</p>
   `;
+
+  return cardFrameMarkup({
+    blockKey,
+    block,
+    headerContent,
+    summaryText: cardRangeSummary(block.range),
+    detailContent: rangeBlockMarkup(block.range),
+    footerContent: toggleButtonMarkup(blockKey, block),
+  });
 }
 
 function consolidationCardMarkup(block) {
@@ -1166,34 +1621,41 @@ function consolidationCardMarkup(block) {
     `;
   });
 
-  return `
-    <article class="${cardClassName("consolidation", block)}">
-      <div class="card-body">
-        <div class="card-head">
-          <div>
-            <p class="eyebrow">${escapeHtml(`${block.order}. ${block.title}`)}</p>
-            <h2>${escapeHtml(block.title)}</h2>
-          </div>
-          ${statusMarkup(block)}
-        </div>
-        <p class="helper">${escapeHtml(block.helper)}</p>
-        ${rangeBlockMarkup(block.fullRange)}
-        ${
-          block.fullRange
-            ? `
-              <div class="summary-lines">
-                <p>${escapeHtml(t("card.consolidation.concerned"))}</p>
-                <p>${escapeHtml(t("card.consolidation.activeToday", { part: bandLabels[block.activeBand] || "-" }))}</p>
-                <p>${escapeHtml(t("card.consolidation.blockToValidate", { block: block.activeRange ? block.activeRange.label : t("card.consolidation.noRange") }))}</p>
-              </div>
-              <div class="band-grid">${bands.join("")}</div>
-            `
-            : ""
-        }
-        ${toggleButtonMarkup("consolidation", block)}
+  const headerContent = `
+    <div class="card-head">
+      <div>
+        <p class="eyebrow">${escapeHtml(`${block.order}. ${block.title}`)}</p>
+        <h2>${escapeHtml(block.title)}</h2>
       </div>
-    </article>
+      ${statusMarkup(block)}
+    </div>
+    <p class="helper">${escapeHtml(block.helper)}</p>
   `;
+
+  const detailContent = `
+    ${rangeBlockMarkup(block.fullRange)}
+    ${
+      block.fullRange
+        ? `
+          <div class="summary-lines">
+            <p>${escapeHtml(t("card.consolidation.concerned"))}</p>
+            <p>${escapeHtml(t("card.consolidation.activeToday", { part: bandLabels[block.activeBand] || "-" }))}</p>
+            <p>${escapeHtml(t("card.consolidation.blockToValidate", { block: block.activeRange ? block.activeRange.label : t("card.consolidation.noRange") }))}</p>
+          </div>
+          <div class="band-grid">${bands.join("")}</div>
+        `
+        : ""
+    }
+  `;
+
+  return cardFrameMarkup({
+    blockKey: "consolidation",
+    block,
+    headerContent,
+    summaryText: cardRangeSummary(block.activeRange || block.fullRange),
+    detailContent,
+    footerContent: toggleButtonMarkup("consolidation", block),
+  });
 }
 
 function newCardMarkup(block) {
@@ -1224,33 +1686,40 @@ function newCardMarkup(block) {
     `;
   });
 
-  return `
-    <article class="${cardClassName("new", block)}">
-      <div class="card-body">
-        <div class="card-head">
-          <div>
-            <p class="eyebrow">${escapeHtml(`${block.order}. ${block.title}`)}</p>
-            <h2>${escapeHtml(block.title)}</h2>
-          </div>
-          ${statusMarkup(block)}
-        </div>
-        <p class="helper">${escapeHtml(block.helper)}</p>
-        ${rangeBlockMarkup(block.range)}
-        ${
-          block.present
-            ? `
-              <div class="summary-lines">
-                <p>${escapeHtml(t("card.new.checked", { count: block.checkedCount }))}</p>
-                <p>${escapeHtml(t("card.new.rule"))}</p>
-                ${block.locked && block.blockedByLabels?.length ? `<p>${escapeHtml(t("card.new.locked", { items: block.blockedByLabels.join(", ") }))}</p>` : ""}
-              </div>
-              <div class="wave-grid">${waveCards.join("")}</div>
-            `
-            : ""
-        }
+  const headerContent = `
+    <div class="card-head">
+      <div>
+        <p class="eyebrow">${escapeHtml(`${block.order}. ${block.title}`)}</p>
+        <h2>${escapeHtml(block.title)}</h2>
       </div>
-    </article>
+      ${statusMarkup(block)}
+    </div>
+    <p class="helper">${escapeHtml(block.helper)}</p>
   `;
+
+  const detailContent = `
+    ${rangeBlockMarkup(block.range)}
+    ${
+      block.present
+        ? `
+          <div class="summary-lines">
+            <p>${escapeHtml(t("card.new.checked", { count: block.checkedCount }))}</p>
+            <p>${escapeHtml(t("card.new.rule"))}</p>
+            ${block.locked && block.blockedByLabels?.length ? `<p>${escapeHtml(t("card.new.locked", { items: block.blockedByLabels.join(", ") }))}</p>` : ""}
+          </div>
+          <div class="wave-grid">${waveCards.join("")}</div>
+        `
+        : ""
+    }
+  `;
+
+  return cardFrameMarkup({
+    blockKey: "new",
+    block,
+    headerContent,
+    summaryText: block.present ? t("card.new.checked", { count: block.checkedCount }) : cardRangeSummary(block.range),
+    detailContent,
+  });
 }
 
 function renderSummary(payload) {
@@ -1346,6 +1815,56 @@ function renderDayStatus(payload) {
   $("#advance-button").disabled = !plan.canAdvanceDay;
 }
 
+function renderSettingsPreview(payload) {
+  const container = $("#settings-preview");
+  if (!container) {
+    return;
+  }
+
+  const { plan } = payload;
+  const previewItems = [
+    {
+      label: t("settings.previewCurrent", {}, payload),
+      value: plan.summary.currentHalfPageLabel,
+    },
+    {
+      label: t("settings.previewNew", {}, payload),
+      value: plan.blocks.new?.range?.label || t("settings.previewMissing", {}, payload),
+    },
+    {
+      label: t("settings.previewOld", {}, payload),
+      value: plan.blocks.old?.range?.label || t("settings.previewMissing", {}, payload),
+    },
+    {
+      label: t("settings.previewConsolidation", {}, payload),
+      value: plan.blocks.consolidation?.activeRange?.label || t("settings.previewMissing", {}, payload),
+    },
+    {
+      label: t("settings.previewRecent", {}, payload),
+      value: plan.blocks.recent?.range?.label || t("settings.previewMissing", {}, payload),
+    },
+    {
+      label: t("settings.previewProgramDay", {}, payload),
+      value: String(plan.summary.programDayIndex),
+    },
+    {
+      label: t("settings.previewTotal", {}, payload),
+      value: t("summary.totalPages", { count: plan.summary.totalPages }, payload),
+    },
+  ];
+
+  container.innerHTML = previewItems
+    .map(
+      (item) => `
+        <article class="settings-preview-card">
+          <span class="eyebrow">${escapeHtml(item.label)}</span>
+          <strong>${escapeHtml(item.value)}</strong>
+        </article>
+      `,
+    )
+    .join("");
+}
+
 function renderErrorTracking(payload) {
   const totalPages = payload.errorTracking.totalPages;
   const summary = payload.errorTracking.summary;
@@ -1361,12 +1880,11 @@ function renderErrorTracking(payload) {
   for (let page = 1; page <= totalPages; page += 1) {
     const entry = normalizePageEntry(pageErrors[String(page)]);
     const programZones = getPageProgramZones(plan, page);
+    const primaryZone = getPrimaryProgramZoneInfo(programZones);
     const effectiveLearned = entry.learned || isLearnedFromProgram(programZones);
-    const programTags = programZones
-      .map((zone) => `<span class="program-tag ${escapeHtml(zone.key)}">${escapeHtml(zone.shortLabel)}</span>`)
-      .join("");
     const programTitleSuffix = programZones.length ? ` - ${programZones.map((zone) => zone.label).join(", ")}` : "";
     const stateLabel = buildPageStateLabel(entry, effectiveLearned);
+    const compactStateLabel = buildPageGridStateLabel(entry, effectiveLearned);
 
     if (effectiveLearned) {
       effectiveLearnedPages += 1;
@@ -1382,14 +1900,8 @@ function renderErrorTracking(payload) {
         title="${escapeHtml(t("page.label", { page }, payload))} - ${escapeHtml(stateLabel)}${escapeHtml(programTitleSuffix)}"
       >
         <span class="page-cell-number">${escapeHtml(page)}</span>
-        ${effectiveLearned ? `<span class="learned-badge">${escapeHtml(t("page.learnedBadge", {}, payload))}</span>` : ""}
-        <span class="page-cell-state">${escapeHtml(stateLabel)}</span>
-        ${programTags ? `<span class="page-cell-program">${programTags}</span>` : ""}
-        <span class="page-cell-counts">
-          <span class="count-pill minor ${entry.errors.minor > 0 ? "filled" : ""}">${escapeHtml(t("count.minor", {}, payload))} ${escapeHtml(entry.errors.minor)}</span>
-          <span class="count-pill medium ${entry.errors.medium > 0 ? "filled" : ""}">${escapeHtml(t("count.medium", {}, payload))} ${escapeHtml(entry.errors.medium)}</span>
-          <span class="count-pill grave ${entry.errors.grave > 0 ? "filled" : ""}">${escapeHtml(t("count.grave", {}, payload))} ${escapeHtml(entry.errors.grave)}</span>
-        </span>
+        <span class="page-cell-state">${escapeHtml(compactStateLabel)}</span>
+        ${primaryZone ? `<span class="page-cell-zone zone-${escapeHtml(primaryZone.key)}">${escapeHtml(primaryZone.shortLabel)}</span>` : ""}
       </button>
     `);
   }
@@ -1453,6 +1965,7 @@ function fillForm(payload) {
   $("#program-day-index").value = payload.progress.programDayIndex;
   $("#total-half-pages").value = payload.settings.totalHalfPages;
   syncCurrentPageMax();
+  syncDailyNewPresets();
 }
 
 function bindPageCellSelection() {
@@ -1469,16 +1982,26 @@ function bindPageCellSelection() {
 }
 
 function bindPageQuickActions() {
+  $all("[data-page-note-input]").forEach((input) => {
+    input.addEventListener("input", () => {
+      setQuickNoteDraft(Number(input.dataset.pageNoteInput), input.value);
+    });
+  });
+
   $all("[data-page-quick-action]").forEach((button) => {
     button.addEventListener("click", async () => {
       try {
+        const page = Number(button.dataset.page);
+        const note = getQuickNoteDraft(page);
         state.payload = await api("/api/page-errors", {
           method: "POST",
           body: JSON.stringify({
-            page: Number(button.dataset.page),
+            page,
             severity: String(button.dataset.pageQuickAction || ""),
+            note,
           }),
         });
+        clearQuickNoteDraft(page);
         render();
         showToast(
           t("toast.errorAdded", {
@@ -1495,12 +2018,14 @@ function bindPageQuickActions() {
   $all("[data-page-quick-clear]").forEach((button) => {
     button.addEventListener("click", async () => {
       try {
+        const page = Number(button.dataset.pageQuickClear);
         state.payload = await api("/api/page-errors/clear", {
           method: "POST",
           body: JSON.stringify({
-            page: Number(button.dataset.pageQuickClear),
+            page,
           }),
         });
+        clearQuickNoteDraft(page);
         render();
         showToast(t("toast.errorsCleared", { page: button.dataset.pageQuickClear }));
       } catch (error) {
@@ -1520,6 +2045,55 @@ function bindPageQuickActions() {
 }
 
 function bindDynamicActions() {
+  $all("[data-focus-toggle-block]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        const origin = button.getBoundingClientRect();
+        const blockKey = button.dataset.focusToggleBlock;
+        const wasDone = Boolean(state.payload?.plan?.blocks?.[blockKey]?.done);
+        const wasComplete = Boolean(state.payload?.plan?.canAdvanceDay);
+        state.payload = await api("/api/toggle-block", {
+          method: "POST",
+          body: JSON.stringify({ blockKey }),
+        });
+        render();
+        const isDone = Boolean(state.payload?.plan?.blocks?.[blockKey]?.done);
+        const isComplete = Boolean(state.payload?.plan?.canAdvanceDay);
+        if (!wasDone && isDone) {
+          launchMiniCelebration(origin);
+        }
+        if (!wasComplete && isComplete) {
+          launchGrandCelebration();
+        }
+      } catch (error) {
+        showToast(error.message, true);
+      }
+    });
+  });
+
+  $all("[data-scroll-to-card]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const blockKey = button.dataset.scrollToCard;
+      state.expandedCards[blockKey] = true;
+      render();
+      const target = document.querySelector(`[data-block-card="${blockKey}"]`);
+      if (!target) {
+        return;
+      }
+
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
+
+  $all("[data-card-expand]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const blockKey = button.dataset.cardExpand;
+      const current = isCardExpanded(blockKey, state.payload?.plan?.blocks?.[blockKey]);
+      state.expandedCards[blockKey] = !current;
+      render();
+    });
+  });
+
   $all("[data-block-key]").forEach((button) => {
     button.addEventListener("click", async () => {
       try {
@@ -1585,8 +2159,10 @@ function render() {
   localizeStaticUi(state.payload);
   renderHero(state.payload);
   renderSummary(state.payload);
+  renderTodayFocus(state.payload);
   renderDayStatus(state.payload);
   renderErrorTracking(state.payload);
+  renderSettingsPreview(state.payload);
   renderCards(state.payload);
   fillForm(state.payload);
   setActiveView(state.activeView);
@@ -1646,8 +2222,23 @@ function bindStaticActions() {
     });
   });
 
+  $all("[data-daily-new-preset]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const value = Number(button.dataset.dailyNewPreset);
+      if (!Number.isInteger(value) || value < 1) {
+        return;
+      }
+
+      $("#daily-new-half-pages").value = String(value);
+    });
+  });
+
   $("#total-half-pages").addEventListener("input", () => {
     syncCurrentPageMax();
+  });
+
+  $("#daily-new-half-pages").addEventListener("input", () => {
+    syncDailyNewPresets();
   });
 
   $("#current-page").addEventListener("change", () => {
