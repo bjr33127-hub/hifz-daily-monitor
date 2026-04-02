@@ -4,7 +4,127 @@ const state = {
   activeView: "today",
   quickNoteDrafts: {},
   expandedCards: {},
+  collapsedJuzs: {},
+  mushafPageCache: {},
+  reviewState: {
+    revealedItemIds: [],
+    completedItemsByPage: {},
+    selectedPage: null,
+  },
+  pageEditor: {
+    open: false,
+    page: null,
+    scope: "word",
+    note: "",
+    rawRect: null,
+    rect: null,
+    anchor: null,
+    selectionOrigin: null,
+  },
+  reviewSwipe: {
+    itemId: "",
+    startX: 0,
+    currentX: 0,
+  },
+  surahGame: {
+    rangeStartId: 1,
+    rangeEndId: 114,
+    gameMode: "quiz",
+    isStarted: false,
+    signature: "",
+    answered: 0,
+    correct: 0,
+    streak: 0,
+    bestStreak: 0,
+    question: null,
+    memoryRound: null,
+  },
 };
+
+const MUSHAF_PAGE_IMAGE_BASE = "https://www.ahadees.com/images/quran/pages";
+const MUSHAF_API_BASE = "https://api.quran.com/api/v4";
+const MUSHAF_FONT_BASE = "https://verses.quran.foundation/fonts/quran";
+const loadedMushafFonts = new Set();
+let uthmanicFontPromise = null;
+
+const SURAH_PAGE_RANGES = Array.isArray(window.SURAH_STARTS)
+  ? window.SURAH_STARTS.map((entry, index, list) => ({
+      id: entry[0],
+      simple: entry[1],
+      arabic: entry[2],
+      startPage: entry[3],
+      endPage: (list[index + 1]?.[3] || 605) - 1 < entry[3] ? entry[3] : (list[index + 1]?.[3] || 605) - 1,
+    }))
+  : [];
+
+const SURAH_BY_ID = new Map(SURAH_PAGE_RANGES.map((surah) => [surah.id, surah]));
+const JUZ_START_PAGES = Object.freeze([
+  1,
+  22,
+  42,
+  63,
+  82,
+  102,
+  122,
+  142,
+  162,
+  182,
+  202,
+  222,
+  242,
+  262,
+  282,
+  302,
+  322,
+  342,
+  362,
+  382,
+  402,
+  422,
+  442,
+  462,
+  482,
+  503,
+  522,
+  542,
+  562,
+  582,
+]);
+const JUZ_NAMES = Object.freeze([
+  { latin: "Alif Lam Mim", arabic: "الم" },
+  { latin: "Sayaqool", arabic: "سيقول" },
+  { latin: "Tilka-r-Rusul", arabic: "تلك الرسل" },
+  { latin: "Lan Tanaaloo", arabic: "لن تنالوا" },
+  { latin: "Wal Muhsanat", arabic: "والمحصنات" },
+  { latin: "La Yuhibbullah", arabic: "لا يحب الله" },
+  { latin: "Wa Iza Samiu", arabic: "وإذا سمعوا" },
+  { latin: "Wa Lau Annana", arabic: "ولو أننا" },
+  { latin: "Qalal Malao", arabic: "قال الملا" },
+  { latin: "Wa A'lamu", arabic: "واعلموا" },
+  { latin: "Ya'tazirun", arabic: "يعتذرون" },
+  { latin: "Wa Ma Min Dabbah", arabic: "وما من دابة" },
+  { latin: "Wa Ma Ubarri'u", arabic: "وما أبرئ" },
+  { latin: "Rubama", arabic: "ربما" },
+  { latin: "Subhanalladhi", arabic: "سبحان الذي" },
+  { latin: "Qal Alam", arabic: "قال ألم" },
+  { latin: "Iqtaraba", arabic: "اقترب" },
+  { latin: "Qad Aflaha", arabic: "قد أفلح" },
+  { latin: "Wa Qalalladhina", arabic: "وقال الذين" },
+  { latin: "Aman Khalaq", arabic: "أمن خلق" },
+  { latin: "Utlu Ma Uhiya", arabic: "اتل ما أوحي" },
+  { latin: "Wa Man Yaqnut", arabic: "ومن يقنت" },
+  { latin: "Wa Mali", arabic: "وما لي" },
+  { latin: "Faman Azlam", arabic: "فمن أظلم" },
+  { latin: "Ilayhi Yuraddu", arabic: "إليه يرد" },
+  { latin: "Ha Mim", arabic: "حم" },
+  { latin: "Qala Fama Khatbukum", arabic: "قال فما خطبكم" },
+  { latin: "Qad Sami Allah", arabic: "قد سمع الله" },
+  { latin: "Tabarak", arabic: "تبارك" },
+  { latin: "Amma", arabic: "عم" },
+]);
+const SURAH_MEMORY_LENGTH = 7;
+const SURAH_MEMORY_PREVIEW_MS = 60000;
+let surahGamePreviewTimer = null;
 
 const I18N = {
   fr: {
@@ -15,11 +135,14 @@ const I18N = {
       "Le but est de cloturer la revision de l'ancien (< j-30) tout les 7 jours, la consolidation (de j-8 a j-30) tout les 3 jours puis de reviser le recent (de j-1 a j-7) puis de reviser la veille (j-1) et enfin apprendre le nouveau.",
     "nav.today": "Aujourd'hui",
     "nav.pages": "Pages",
+    "nav.review": "Revoir ses erreurs",
+    "nav.surahs": "Mini jeu",
     "nav.settings": "Parametres",
     "today.dayLabel": "Journee",
     "today.validationTitle": "Etat De Validation",
     "today.validationHelp": "Valide les blocs dans l'ordre, puis passe au lendemain.",
     "today.resetButton": "Reinitialiser les validations du jour",
+    "today.skipMemorizationButton": "Ne rien memoriser aujourd'hui",
     "today.advanceButton": "Valider la journee et passer au lendemain",
     "today.focusLabel": "Maintenant",
     "today.focusTitle": "Ce que tu fais maintenant",
@@ -54,16 +177,166 @@ const I18N = {
     "pages.quickLabel": "Saisie Rapide",
     "pages.quickTitle": "Une page, un clic, une erreur",
     "pages.quickHelp":
-      "Clique une page dans la grille pour ouvrir ses actions rapides, puis choisis directement Mineur, Moyenne, Grave ou Effacer.",
+      "Clique une page dans la grille, ouvre la vraie page du mushaf, puis encadre la zone exacte de l'erreur.",
+    "pages.insightsLabel": "Lecture",
+    "pages.insightsTitle": "Etat Et Lecture De La Carte",
+    "pages.insightsHelp": "Lis les etats d'un coup d'oeil, puis clique une page pour ouvrir la vraie page du mushaf.",
     "pages.summaryLabel": "Synthese",
     "pages.summaryTitle": "Etat De La Carte",
     "pages.legendLabel": "Lecture",
     "pages.legendTitle": "Lire La Carte",
     "pages.mapLabel": "Mushaf",
     "pages.mapTitle": "Representation Du Coran",
-    "pages.mapHelp": "Clique une page pour ouvrir les actions rapides a droite.",
+    "pages.mapHelp": "Clique une page pour ouvrir la vraie page du mushaf et placer ta zone d'erreur.",
     "pages.definitionsLabel": "Definitions",
     "pages.definitionsHelp": "Les zones du programme sont visibles directement au-dessus de la carte.",
+    "pages.juzLabel": "Juz {{number}}",
+    "pages.juzPages": "Pages {{start}}-{{end}}",
+    "pages.juzPageCount": "{{count}} pages",
+    "pages.juzErrorCount": "{{count}} fragile(s)",
+    "pages.juzLearnedCount": "{{count}} apprise(s)",
+    "pages.juzExpand": "Ouvrir",
+    "pages.juzCollapse": "Reduire",
+    "review.eyebrow": "Repetition Espacee",
+    "review.title": "Revoir ses erreurs",
+    "review.help": "Chaque carte reprend une erreur precise, masque la zone fautive et la repropose selon son prochain rappel.",
+    "review.dueNow": "A revoir maintenant",
+    "review.upcoming": "A venir",
+    "review.mastered": "Stables",
+    "review.libraryLabel": "Bibliotheque",
+    "review.libraryTitle": "Toutes les pages avec erreurs",
+    "review.libraryHelp": "Clique une page pour la consulter librement sans perdre la file des cartes dues.",
+    "review.returnToQueue": "Revenir a la file",
+    "review.status.due": "A revoir",
+    "review.status.upcoming": "Plus tard",
+    "review.status.mastered": "Stable",
+    "review.selectedLabel": "Page selectionnee",
+    "review.browseHelp": "Cette page n'est pas due maintenant. Toutes ses erreurs sont visibles pour une revision libre.",
+    "review.browseListLabel": "Erreurs visibles sur cette page",
+    "review.emptyTitle": "Aucune erreur detaillee a revoir.",
+    "review.emptyHelp": "Ajoute d'abord une erreur depuis une vraie page du mushaf pour lancer ce mode.",
+    "review.emptyUpcoming": "Aucune carte n'est due pour l'instant. Reviens plus tard ou ajoute une nouvelle erreur.",
+    "review.nextDue": "Prochain rappel",
+    "review.cardLabel": "Carte {{current}} sur {{total}}",
+    "review.pageLabel": "Page {{page}}",
+    "review.pageErrorCount": "{{count}} erreur(s) sur cette page",
+    "review.revealProgress": "{{count}} / {{total}} erreurs devoilees",
+    "review.revealNextHelp": "Clique sur Verifier pour devoiler l'erreur suivante sur cette meme page.",
+    "review.revealDoneHelp": "Toutes les erreurs de la page sont revelees. Note-les maintenant une par une.",
+    "review.revealDoneButton": "Tout est devoile",
+    "review.answerCurrentHelp": "Tu peux noter cette erreur maintenant, puis cliquer sur Verifier pour la suivante.",
+    "review.nextPagePeek": "Debut page {{page}}",
+    "review.scopeLabel": "Type",
+    "review.noteLabel": "Note",
+    "review.noteEmpty": "Sans note",
+    "review.swipeHelp": "Glisse a droite si tu as eu bon, a gauche si tu t'es trompe.",
+    "review.revealHelp": "Retire d'abord le masque pour verifier si tu avais bien retrouve l'endroit.",
+    "review.revealButton": "Verifier",
+    "review.hideButton": "Remettre le masque",
+    "review.successButton": "Bon",
+    "review.failureButton": "Rate",
+    "review.successToast": "Erreur revue avec succes.",
+    "review.failureToast": "Erreur a revoir plus vite.",
+    "review.mask.harakah": "",
+    "review.mask.word": "",
+    "review.mask.line": "",
+    "review.mask.next-page-link": "",
+    "editor.eyebrow": "Page reelle",
+    "editor.title": "Place la zone d'erreur",
+    "editor.help":
+      "Fais glisser sur la page pour entourer l'endroit exact, puis choisis si c'etait une harakat, un mot, une ligne entiere ou une liaison avec la page suivante.",
+    "editor.scopeLabel": "Type d'erreur",
+    "editor.scope.harakah": "Harakats",
+    "editor.scope.word": "Mot",
+    "editor.scope.line": "Ligne entiere",
+    "editor.scope.next-page-link": "Liaison page suivante",
+    "editor.noteLabel": "Note optionnelle",
+    "editor.notePlaceholder": "Ex: confusion sur une fin d'ayah, oubli au milieu de la ligne...",
+    "editor.selectionEmpty": "Aucune zone selectionnee pour le moment.",
+    "editor.selectionReady": "Zone selectionnee. Tu peux enregistrer cette erreur.",
+    "editor.selectionAutoLink": "Aucune zone a tracer : cette erreur ouvrira automatiquement les 3 premieres lignes de la page suivante.",
+    "editor.selectionAutoLinkUsed": "Une liaison avec la page suivante existe deja sur cette page.",
+    "editor.save": "Enregistrer l'erreur",
+    "editor.cancel": "Fermer",
+    "editor.clearSelection": "Effacer la zone",
+    "editor.deleteError": "Supprimer",
+    "editor.recentLabel": "Erreurs deja placees sur cette page",
+    "editor.recentEmpty": "Aucune erreur detaillee sur cette page pour l'instant.",
+    "editor.openFromInspector": "Ajouter une erreur precise",
+    "surahs.eyebrow": "Ordre des sourates",
+    "surahs.title": "Mini jeu",
+    "surahs.help":
+      "Travaille l'enchainement des sourates avec des questions avant / apres, en choisissant la plage exacte que tu veux renforcer.",
+    "surahs.playModeLabel": "Mode de jeu",
+    "surahs.playModeQuiz": "Avant / apres",
+    "surahs.playModeQuizHint": "Reponds a des questions rapides sur la sourate juste avant ou juste apres.",
+    "surahs.playModeMemory": "Memo 7 sourates",
+    "surahs.playModeMemoryHint": "Observe 7 sourates pendant 1 min, puis remets-les dans le bon ordre.",
+    "surahs.playButton": "Jouer",
+    "surahs.readyTitle": "La partie est prete",
+    "surahs.readyHelpQuiz": "Choisis ton mode et ta plage, puis clique sur Jouer pour lancer la premiere question.",
+    "surahs.readyHelpMemory": "Choisis ta plage, puis clique sur Jouer pour afficher les 7 sourates a memoriser.",
+    "surahs.rangeLabel": "Plage de jeu",
+    "surahs.rangeHint": "Choisis une portion continue de sourates pour te concentrer sur un ordre precis.",
+    "surahs.rangeFrom": "De",
+    "surahs.rangeTo": "A",
+    "surahs.rangeQuickAll": "Tout le Coran",
+    "surahs.activeSpanLabel": "Plage active",
+    "surahs.activeSpanAll": "Tout le Coran",
+    "surahs.countLabel": "Sourates disponibles",
+    "surahs.countValue": "{{count}} sourates dans cette plage",
+    "surahs.coverageLabel": "Zones couvertes",
+    "surahs.coverageEmpty": "Aucune plage jouable pour le moment.",
+    "surahs.statsScore": "Bonnes reponses",
+    "surahs.statsAnswered": "Questions faites",
+    "surahs.statsStreak": "Serie en cours",
+    "surahs.statsBestStreak": "Meilleure serie",
+    "surahs.statsAccuracy": "Precision",
+    "surahs.heatLabel": "Chaleur",
+    "surahs.heatCalm": "Echauffement",
+    "surahs.heatWarm": "Ça chauffe",
+    "surahs.heatFire": "En feu",
+    "surahs.heatBlazing": "Incandescent",
+    "surahs.heatLegend": "Legende",
+    "surahs.heatNext": "Encore {{count}} bonne(s) reponse(s) pour passer au niveau suivant.",
+    "surahs.heatMax": "Tu es au niveau maximal. Garde la flamme allumee.",
+    "surahs.streakValue": "{{count}} de serie",
+    "surahs.accuracyValue": "{{count}}%",
+    "surahs.milestoneToast": "Serie de {{count}} !",
+    "surahs.restart": "Recommencer",
+    "surahs.promptNext": "Quelle sourate vient juste apres celle-ci ?",
+    "surahs.promptPrevious": "Quelle sourate vient juste avant celle-ci ?",
+    "surahs.answerLabel": "Choisis la bonne reponse",
+    "surahs.feedbackCorrect": "Bonne reponse. Tu gardes le bon ordre.",
+    "surahs.feedbackWrong": "Pas encore. La bonne reponse etait {{name}}.",
+    "surahs.sequenceLabel": "Repere rapide",
+    "surahs.nextQuestion": "Question suivante",
+    "surahs.memoryPreviewTitle": "Memorise cette suite",
+    "surahs.memoryPreviewHelp": "Tu as 1 minute pour retenir l'ordre exact avant le melange.",
+    "surahs.memoryCountdownLabel": "Melange dans",
+    "surahs.memoryCountdownValue": "{{count}}s",
+    "surahs.memoryPreviewSkip": "Passer au melange",
+    "surahs.memoryReorderTitle": "Remets-les dans l'ordre",
+    "surahs.memoryReorderHelp": "Clique les cartes restantes dans l'ordre exact de memorisation.",
+    "surahs.memorySelectedLabel": "Ton ordre",
+    "surahs.memoryRemainingLabel": "Cartes restantes",
+    "surahs.memoryRemove": "Retirer",
+    "surahs.memoryClear": "Vider",
+    "surahs.memoryReplay": "Revoir 1 min",
+    "surahs.memoryNewRound": "Nouvelle serie",
+    "surahs.memoryCorrect": "Ordre parfait. Tu as retenu les 7 sourates.",
+    "surahs.memoryWrong": "Pas encore. Voici l'ordre exact pour rejouer plus proprement.",
+    "surahs.memoryRemainingDone": "Toutes les cartes sont placees.",
+    "surahs.memoryAnswerProgress": "{{count}} / 7 placees",
+    "surahs.emptyMemoryTitle": "Il faut au moins 7 sourates dans la plage.",
+    "surahs.emptyMemoryHelp": "Elargis la plage choisie pour lancer ce mode memoire.",
+    "surahs.emptyRangeTitle": "Choisis au moins deux sourates dans ta plage.",
+    "surahs.emptyRangeHelp": "Avec une seule sourate, le jeu ne peut pas poser de question avant / apres.",
+    "surahs.emptyAllTitle": "Le jeu n'a pas pu preparer de question.",
+    "surahs.emptyAllHelp": "Recharge la page ou recommence le jeu.",
+    "surahs.currentLabel": "Sourate repere",
+    "surahs.pagesLabel": "Pages {{start}}-{{end}}",
+    "surahs.flamesLabel": "Flammes de serie",
     "legend.noneTitle": "Neutre",
     "legend.noneHelp": "Aucune erreur enregistree.",
     "legend.minorTitle": "Mineur",
@@ -87,13 +360,33 @@ const I18N = {
     "settings.identityHelp": "Renseigne juste le prenom et la langue de l'interface.",
     "settings.progressLabel": "Progression",
     "settings.progressTitle": "Ou en es-tu aujourd'hui ?",
-    "settings.progressHelp": "Indique la page et la moitie a partir desquelles le plan doit repartir.",
+    "settings.progressHelp": "Indique le sens du parcours, la phase active, puis la page et la moitie a partir desquelles le plan doit repartir.",
+    "settings.programModeLabel": "Parcours",
+    "settings.programModeForwardOption": "Debut -> fin",
+    "settings.programModeReverseOption": "Fin -> debut",
+    "settings.programModeReverseForwardOption": "Fin -> debut puis debut -> fin",
+    "settings.phaseLabel": "Phase actuelle",
+    "settings.phaseSingleOption": "Phase unique - {{direction}}",
+    "settings.phaseReverseOption": "Phase 1 - fin -> debut",
+    "settings.phaseForwardOption": "Phase 2 - debut -> fin",
+    "settings.phaseCoveredLabel": "Pages deja couvertes",
+    "settings.phaseCoveredHelp": "Tu peux mettre .5 si tu es a la moitie d'une page.",
+    "settings.phaseNextLabel": "Prochain point",
+    "settings.phaseStatusLabel": "Etat",
+    "settings.phaseStatusActive": "En cours",
+    "settings.phaseStatusDone": "Phase terminee",
+    "settings.phaseAutoHelp": "Les deux phases peuvent avancer en parallele. Choisis simplement celle que tu veux afficher dans le plan du jour.",
+    "settings.phaseDisplayLabel": "Plan affiche",
+    "settings.phaseDisplayButton": "Afficher cette phase",
+    "settings.phaseDisplayActive": "Phase affichee",
     "settings.rhythmLabel": "Rythme",
     "settings.rhythmTitle": "Quel rythme veux-tu tenir ?",
     "settings.rhythmHelp": "Choisis ta part de nouveau quotidienne, puis ajuste la taille totale si besoin.",
     "settings.previewLabel": "Apercu",
     "settings.previewTitle": "Ce que le plan va produire",
     "settings.previewHelp": "Le recap se met a jour avec l'etat actuel du programme.",
+    "settings.previewPath": "Sens actif",
+    "settings.previewPhase": "Phase",
     "settings.previewCurrent": "Point actuel",
     "settings.previewNew": "Nouveau du jour",
     "settings.previewOld": "Ancien aujourd'hui",
@@ -122,6 +415,7 @@ const I18N = {
     "emptyNote": "Aucun bloc disponible pour cette section aujourd'hui.",
     "meta.range": "Plage",
     "meta.size": "Taille",
+    "meta.surahs": "Sourates",
     "card.expand": "Voir le detail",
     "card.collapse": "Replier",
     "toggle.undo": "Annuler la validation",
@@ -145,6 +439,7 @@ const I18N = {
     "summary.progress": "Progression",
     "summary.learned": "{{count}} apprises",
     "summary.totalPages": "{{count}} pages au total",
+    "summary.phase": "Phase",
     "summary.day": "Jour",
     "summary.currentPoint": "Point actuel",
     "summary.dailyNew": "Nouveau / jour",
@@ -154,13 +449,16 @@ const I18N = {
     "day.completeHelper": "{{done}} / {{total}} blocs valides, le programme peut avancer.",
     "day.completeText":
       "Tu peux passer au lendemain. Le plan de demain sera recalcule automatiquement a partir de ta progression.",
+    "day.skippedTitle": "Journee cloturee sans nouveau.",
+    "day.skippedHelper": "{{done}} / {{total}} blocs du jour sont clotures, mais le nouveau reste au meme point.",
+    "day.skippedText": "Tu as termine la journee sans faire avancer la memorisation. Le programme reste sur le meme nouveau.",
     "day.openTitle": "Journee encore ouverte.",
     "day.openHelper": "{{done}} / {{total}} blocs valides pour aujourd'hui.",
     "day.remaining": "Il reste a valider : {{items}}.",
     "errorSummary.pagesWithErrors": "Pages avec erreurs",
     "errorSummary.pagesWithErrorsHelp": "pages fragiles sur {{total}}.",
     "errorSummary.learnedPages": "Pages apprises",
-    "errorSummary.learnedPagesHelp": "inclut le marquage automatique jusqu'a la veille.",
+    "errorSummary.learnedPagesHelp": "inclut le marquage automatique selon le parcours actif.",
     "errorSummary.minor": "Mineur",
     "errorSummary.minorHelp": "occurrences de voyelles.",
     "errorSummary.medium": "Moyenne",
@@ -202,8 +500,10 @@ const I18N = {
     "quick.title": "Inspecteur",
     "quick.close": "Fermer",
     "quick.pageTitle": "Page {{page}}",
-    "quick.help": "Lis le contexte de la page, ajoute une erreur et laisse une note si besoin.",
+    "quick.help": "Consulte l'etat de la page, son historique detaille, puis ouvre la vraie page pour placer une erreur precise.",
     "quick.stateLabel": "Statut actuel",
+    "quick.surahLabel": "Sourates",
+    "quick.surahEmpty": "Aucune sourate identifiee pour cette page.",
     "quick.zoneLabel": "Zone du programme",
     "quick.zoneEmpty": "Aucune zone marquee aujourd'hui.",
     "quick.countsLabel": "Compteurs",
@@ -211,10 +511,11 @@ const I18N = {
     "quick.lastNoteEmpty": "Aucune note enregistree pour cette page.",
     "quick.noteLabel": "Note d'erreur",
     "quick.notePlaceholder": "Ex: confusion avec une page proche, blocage au milieu...",
-    "quick.noteHelp": "Optionnel. La note sera enregistree avec la prochaine erreur ajoutee.",
+    "quick.noteHelp": "Les nouvelles erreurs se placent directement sur la vraie page du mushaf.",
     "quick.historyLabel": "Historique recent",
     "quick.historyEmpty": "Aucune erreur enregistree pour le moment.",
     "quick.historyNoNote": "Sans note",
+    "quick.reviewDueLabel": "A revoir",
     "quick.minor": "Mineur",
     "quick.minorHelp": "Voyelle ou correction legere",
     "quick.medium": "Moyenne",
@@ -223,13 +524,16 @@ const I18N = {
     "quick.graveHelp": "Oubli ou blocage",
     "quick.clear": "Effacer",
     "quick.clearHelp": "Effacer erreurs et notes",
+    "quick.openEditor": "Ouvrir la page reelle",
     "toast.pageSelected": "Page {{page}} selectionnee.",
     "toast.pageClosed": "Page {{page}} fermee.",
     "toast.errorAdded": "Erreur {{severity}} ajoutee a la page {{page}}.",
+    "toast.errorDeleted": "Erreur supprimee de la page {{page}}.",
     "toast.errorsCleared": "Erreurs retirees de la page {{page}}.",
     "toast.dayRecalculated": "Journee recalculee.",
     "toast.dayReset": "Validations du jour reinitialisees.",
     "toast.nextDay": "Passage au jour suivant.",
+    "toast.skipMemorizationDay": "Journee cloturee sans nouvelle memorisation.",
     "toast.networkError": "Erreur reseau.",
     "error.invalidPageFormat": "Format de pages invalide.",
     "error.invalidPageFormatExample": "Format de pages invalide. Utilise 12, 14, 20-25.",
@@ -245,11 +549,14 @@ const I18N = {
       "The goal is to complete old review (< J-30) every 7 days, consolidation (from J-8 to J-30) every 3 days, then review the recent block (from J-1 to J-7), then yesterday (J-1), and finally learn the new block.",
     "nav.today": "Today",
     "nav.pages": "Pages",
+    "nav.review": "Review errors",
+    "nav.surahs": "Mini game",
     "nav.settings": "Settings",
     "today.dayLabel": "Day",
     "today.validationTitle": "Validation Status",
     "today.validationHelp": "Validate the blocks in order, then move to the next day.",
     "today.resetButton": "Reset today's validations",
+    "today.skipMemorizationButton": "Skip memorizing today",
     "today.advanceButton": "Validate the day and move on",
     "today.focusLabel": "Now",
     "today.focusTitle": "What you do right now",
@@ -284,16 +591,166 @@ const I18N = {
     "pages.quickLabel": "Quick Input",
     "pages.quickTitle": "One page, one click, one error",
     "pages.quickHelp":
-      "Click a page in the grid to open quick actions, then choose Minor, Medium, Grave, or Clear.",
+      "Click a page in the grid, open the real mushaf page, then draw the exact area of the mistake.",
+    "pages.insightsLabel": "Reading",
+    "pages.insightsTitle": "Map Status And Reading Guide",
+    "pages.insightsHelp": "Read the states at a glance, then click a page to open the real mushaf page.",
     "pages.summaryLabel": "Summary",
     "pages.summaryTitle": "Map Status",
     "pages.legendLabel": "Legend",
     "pages.legendTitle": "How To Read The Map",
     "pages.mapLabel": "Mushaf",
     "pages.mapTitle": "Quran Overview",
-    "pages.mapHelp": "Click a page to open quick actions on the right.",
+    "pages.mapHelp": "Click a page to open the real mushaf page and place the exact error area.",
     "pages.definitionsLabel": "Definitions",
     "pages.definitionsHelp": "Program zones are shown directly above the map.",
+    "pages.juzLabel": "Juz {{number}}",
+    "pages.juzPages": "Pages {{start}}-{{end}}",
+    "pages.juzPageCount": "{{count}} pages",
+    "pages.juzErrorCount": "{{count}} fragile",
+    "pages.juzLearnedCount": "{{count}} learned",
+    "pages.juzExpand": "Open",
+    "pages.juzCollapse": "Collapse",
+    "review.eyebrow": "Spaced Repetition",
+    "review.title": "Review your errors",
+    "review.help": "Each card hides the exact mistake zone and brings it back according to its next spaced repetition slot.",
+    "review.dueNow": "Due now",
+    "review.upcoming": "Upcoming",
+    "review.mastered": "Stable",
+    "review.libraryLabel": "Library",
+    "review.libraryTitle": "All pages with errors",
+    "review.libraryHelp": "Click any page to inspect it freely without losing the due review queue.",
+    "review.returnToQueue": "Back to due queue",
+    "review.status.due": "Due",
+    "review.status.upcoming": "Later",
+    "review.status.mastered": "Stable",
+    "review.selectedLabel": "Selected page",
+    "review.browseHelp": "This page is not due right now. All its errors are visible for free review.",
+    "review.browseListLabel": "Visible errors on this page",
+    "review.emptyTitle": "No detailed errors to review yet.",
+    "review.emptyHelp": "Add an error from a real mushaf page first to start this mode.",
+    "review.emptyUpcoming": "Nothing is due right now. Come back later or add a new error.",
+    "review.nextDue": "Next review",
+    "review.cardLabel": "Card {{current}} of {{total}}",
+    "review.pageLabel": "Page {{page}}",
+    "review.pageErrorCount": "{{count}} error(s) on this page",
+    "review.revealProgress": "{{count}} / {{total}} errors revealed",
+    "review.revealNextHelp": "Click Reveal to uncover the next error on this same page.",
+    "review.revealDoneHelp": "All errors on this page are revealed. Mark them one by one now.",
+    "review.revealDoneButton": "All revealed",
+    "review.answerCurrentHelp": "You can score this error now, then click Reveal for the next one.",
+    "review.nextPagePeek": "Start of page {{page}}",
+    "review.scopeLabel": "Type",
+    "review.noteLabel": "Note",
+    "review.noteEmpty": "No note",
+    "review.swipeHelp": "Swipe right if you got it right, left if you missed it.",
+    "review.revealHelp": "Remove the mask first to check whether you found the exact place.",
+    "review.revealButton": "Reveal",
+    "review.hideButton": "Hide mask",
+    "review.successButton": "Correct",
+    "review.failureButton": "Missed",
+    "review.successToast": "Error reviewed successfully.",
+    "review.failureToast": "This error will come back sooner.",
+    "review.mask.harakah": "",
+    "review.mask.word": "",
+    "review.mask.line": "",
+    "review.mask.next-page-link": "",
+    "editor.eyebrow": "Real page",
+    "editor.title": "Place the error area",
+    "editor.help":
+      "Drag on the page to surround the exact location, then choose whether it was a harakah, a word, a whole line, or the link with the next page.",
+    "editor.scopeLabel": "Error type",
+    "editor.scope.harakah": "Harakahs",
+    "editor.scope.word": "Word",
+    "editor.scope.line": "Whole line",
+    "editor.scope.next-page-link": "Link to next page",
+    "editor.noteLabel": "Optional note",
+    "editor.notePlaceholder": "Example: confusion on the end of an ayah, forgetting in the middle of the line...",
+    "editor.selectionEmpty": "No area selected yet.",
+    "editor.selectionReady": "Area selected. You can save this error now.",
+    "editor.selectionAutoLink": "No area to draw: this error will automatically open the first 3 lines of the next page.",
+    "editor.selectionAutoLinkUsed": "A next-page link already exists on this page.",
+    "editor.save": "Save error",
+    "editor.cancel": "Close",
+    "editor.clearSelection": "Clear area",
+    "editor.deleteError": "Delete",
+    "editor.recentLabel": "Errors already placed on this page",
+    "editor.recentEmpty": "No detailed errors on this page yet.",
+    "editor.openFromInspector": "Open real page",
+    "surahs.eyebrow": "Surah order",
+    "surahs.title": "Mini game",
+    "surahs.help":
+      "Practice the surah sequence with before / after questions by choosing the exact surah range you want to reinforce.",
+    "surahs.playModeLabel": "Play mode",
+    "surahs.playModeQuiz": "Before / after",
+    "surahs.playModeQuizHint": "Answer quick questions about the surah just before or just after.",
+    "surahs.playModeMemory": "Memory 7 surahs",
+    "surahs.playModeMemoryHint": "Study 7 surahs for 1 minute, then put them back in the correct order.",
+    "surahs.playButton": "Play",
+    "surahs.readyTitle": "Your round is ready",
+    "surahs.readyHelpQuiz": "Choose your mode and range, then click Play to launch the first question.",
+    "surahs.readyHelpMemory": "Choose your range, then click Play to reveal the 7 surahs you need to memorize.",
+    "surahs.rangeLabel": "Play range",
+    "surahs.rangeHint": "Choose one continuous span of surahs so the game stays focused on a precise sequence.",
+    "surahs.rangeFrom": "From",
+    "surahs.rangeTo": "To",
+    "surahs.rangeQuickAll": "Full Quran",
+    "surahs.activeSpanLabel": "Active span",
+    "surahs.activeSpanAll": "Full Quran",
+    "surahs.countLabel": "Available surahs",
+    "surahs.countValue": "{{count}} surahs in this range",
+    "surahs.coverageLabel": "Covered spans",
+    "surahs.coverageEmpty": "No playable span yet.",
+    "surahs.statsScore": "Correct answers",
+    "surahs.statsAnswered": "Questions answered",
+    "surahs.statsStreak": "Current streak",
+    "surahs.statsBestStreak": "Best streak",
+    "surahs.statsAccuracy": "Accuracy",
+    "surahs.heatLabel": "Heat",
+    "surahs.heatCalm": "Warm-up",
+    "surahs.heatWarm": "Heating up",
+    "surahs.heatFire": "On fire",
+    "surahs.heatBlazing": "Blazing",
+    "surahs.heatLegend": "Legend",
+    "surahs.heatNext": "{{count}} more correct answer(s) to reach the next level.",
+    "surahs.heatMax": "You are at the max level. Keep the flame alive.",
+    "surahs.streakValue": "{{count}} streak",
+    "surahs.accuracyValue": "{{count}}%",
+    "surahs.milestoneToast": "{{count}} streak!",
+    "surahs.restart": "Restart",
+    "surahs.promptNext": "Which surah comes right after this one?",
+    "surahs.promptPrevious": "Which surah comes right before this one?",
+    "surahs.answerLabel": "Pick the right answer",
+    "surahs.feedbackCorrect": "Correct. The sequence is holding.",
+    "surahs.feedbackWrong": "Not yet. The correct answer was {{name}}.",
+    "surahs.sequenceLabel": "Quick sequence cue",
+    "surahs.nextQuestion": "Next question",
+    "surahs.memoryPreviewTitle": "Memorize this sequence",
+    "surahs.memoryPreviewHelp": "You have 1 minute to retain the exact order before the shuffle.",
+    "surahs.memoryCountdownLabel": "Shuffle in",
+    "surahs.memoryCountdownValue": "{{count}}s",
+    "surahs.memoryPreviewSkip": "Shuffle now",
+    "surahs.memoryReorderTitle": "Put them back in order",
+    "surahs.memoryReorderHelp": "Click the remaining cards in the exact memorized order.",
+    "surahs.memorySelectedLabel": "Your order",
+    "surahs.memoryRemainingLabel": "Remaining cards",
+    "surahs.memoryRemove": "Remove",
+    "surahs.memoryClear": "Clear",
+    "surahs.memoryReplay": "Replay 1 min",
+    "surahs.memoryNewRound": "New sequence",
+    "surahs.memoryCorrect": "Perfect order. You retained all 7 surahs.",
+    "surahs.memoryWrong": "Not yet. Here is the exact order so you can replay it cleanly.",
+    "surahs.memoryRemainingDone": "All cards have been placed.",
+    "surahs.memoryAnswerProgress": "{{count}} / 7 placed",
+    "surahs.emptyMemoryTitle": "This mode needs at least 7 surahs in the selected range.",
+    "surahs.emptyMemoryHelp": "Widen the selected span to start the memory mode.",
+    "surahs.emptyRangeTitle": "Choose at least two surahs in your range.",
+    "surahs.emptyRangeHelp": "With only one surah, the game cannot ask before / after questions.",
+    "surahs.emptyAllTitle": "The game could not prepare a question.",
+    "surahs.emptyAllHelp": "Reload the page or restart the game.",
+    "surahs.currentLabel": "Anchor surah",
+    "surahs.pagesLabel": "Pages {{start}}-{{end}}",
+    "surahs.flamesLabel": "Streak flames",
     "legend.noneTitle": "Neutral",
     "legend.noneHelp": "No recorded error.",
     "legend.minorTitle": "Minor",
@@ -317,13 +774,33 @@ const I18N = {
     "settings.identityHelp": "Just set the first name and the interface language.",
     "settings.progressLabel": "Progress",
     "settings.progressTitle": "Where are you today?",
-    "settings.progressHelp": "Set the page and half from which the plan should resume.",
+    "settings.progressHelp": "Set the program path, the active phase, then the page and half from which the plan should resume.",
+    "settings.programModeLabel": "Program path",
+    "settings.programModeForwardOption": "Start -> end",
+    "settings.programModeReverseOption": "End -> start",
+    "settings.programModeReverseForwardOption": "End -> start then start -> end",
+    "settings.phaseLabel": "Current phase",
+    "settings.phaseSingleOption": "Single phase - {{direction}}",
+    "settings.phaseReverseOption": "Phase 1 - end -> start",
+    "settings.phaseForwardOption": "Phase 2 - start -> end",
+    "settings.phaseCoveredLabel": "Pages already covered",
+    "settings.phaseCoveredHelp": "You can use .5 if you are halfway through a page.",
+    "settings.phaseNextLabel": "Next point",
+    "settings.phaseStatusLabel": "Status",
+    "settings.phaseStatusActive": "In progress",
+    "settings.phaseStatusDone": "Phase completed",
+    "settings.phaseAutoHelp": "Both phases can progress in parallel. Just choose which one should be shown in today's plan.",
+    "settings.phaseDisplayLabel": "Displayed plan",
+    "settings.phaseDisplayButton": "Show this phase",
+    "settings.phaseDisplayActive": "Displayed phase",
     "settings.rhythmLabel": "Pace",
     "settings.rhythmTitle": "What pace do you want to keep?",
     "settings.rhythmHelp": "Choose your daily new portion, then adjust the total size if needed.",
     "settings.previewLabel": "Preview",
     "settings.previewTitle": "What the plan will generate",
     "settings.previewHelp": "This recap updates from the current program state.",
+    "settings.previewPath": "Active direction",
+    "settings.previewPhase": "Phase",
     "settings.previewCurrent": "Current point",
     "settings.previewNew": "Today's new",
     "settings.previewOld": "Old today",
@@ -352,6 +829,7 @@ const I18N = {
     "emptyNote": "No block is available for this section today.",
     "meta.range": "Range",
     "meta.size": "Size",
+    "meta.surahs": "Surahs",
     "card.expand": "Show details",
     "card.collapse": "Collapse",
     "toggle.undo": "Undo validation",
@@ -375,6 +853,7 @@ const I18N = {
     "summary.progress": "Progress",
     "summary.learned": "{{count}} learned",
     "summary.totalPages": "{{count}} total pages",
+    "summary.phase": "Phase",
     "summary.day": "Day",
     "summary.currentPoint": "Current point",
     "summary.dailyNew": "New / day",
@@ -384,13 +863,16 @@ const I18N = {
     "day.completeHelper": "{{done}} / {{total}} blocks validated, the program can move on.",
     "day.completeText":
       "You can move to the next day. Tomorrow's plan will be recalculated automatically from your progress.",
+    "day.skippedTitle": "Day closed without new memorization.",
+    "day.skippedHelper": "{{done}} / {{total}} day blocks are closed, but the new section stays on the same point.",
+    "day.skippedText": "You finished the day without advancing memorization. The program stays on the same new section.",
     "day.openTitle": "Day still open.",
     "day.openHelper": "{{done}} / {{total}} blocks validated for today.",
     "day.remaining": "Still to validate: {{items}}.",
     "errorSummary.pagesWithErrors": "Pages with errors",
     "errorSummary.pagesWithErrorsHelp": "fragile pages out of {{total}}.",
     "errorSummary.learnedPages": "Learned pages",
-    "errorSummary.learnedPagesHelp": "includes automatic marking up to yesterday.",
+    "errorSummary.learnedPagesHelp": "includes automatic marking based on the active path.",
     "errorSummary.minor": "Minor",
     "errorSummary.minorHelp": "harakah occurrences.",
     "errorSummary.medium": "Medium",
@@ -432,8 +914,10 @@ const I18N = {
     "quick.title": "Inspector",
     "quick.close": "Close",
     "quick.pageTitle": "Page {{page}}",
-    "quick.help": "Review the page context, add an error, and leave a note when needed.",
+    "quick.help": "Review the page state, its detailed history, then open the real page to place a precise error.",
     "quick.stateLabel": "Current state",
+    "quick.surahLabel": "Surahs",
+    "quick.surahEmpty": "No surah identified for this page.",
     "quick.zoneLabel": "Program zone",
     "quick.zoneEmpty": "No program zone marked today.",
     "quick.countsLabel": "Counters",
@@ -441,10 +925,11 @@ const I18N = {
     "quick.lastNoteEmpty": "No note recorded for this page yet.",
     "quick.noteLabel": "Error note",
     "quick.notePlaceholder": "Example: confusion with a nearby page, block in the middle...",
-    "quick.noteHelp": "Optional. This note will be saved with the next added error.",
+    "quick.noteHelp": "New errors are now placed directly on the real mushaf page.",
     "quick.historyLabel": "Recent history",
     "quick.historyEmpty": "No error recorded yet.",
     "quick.historyNoNote": "No note",
+    "quick.reviewDueLabel": "Due",
     "quick.minor": "Minor",
     "quick.minorHelp": "Harakah or light correction",
     "quick.medium": "Medium",
@@ -453,13 +938,16 @@ const I18N = {
     "quick.graveHelp": "Blocking or forgetting",
     "quick.clear": "Clear",
     "quick.clearHelp": "Clear errors and notes",
+    "quick.openEditor": "Open real page",
     "toast.pageSelected": "Page {{page}} selected.",
     "toast.pageClosed": "Page {{page}} closed.",
     "toast.errorAdded": "{{severity}} error added to page {{page}}.",
+    "toast.errorDeleted": "Error deleted from page {{page}}.",
     "toast.errorsCleared": "Errors cleared from page {{page}}.",
     "toast.dayRecalculated": "Day recalculated.",
     "toast.dayReset": "Today's validations reset.",
     "toast.nextDay": "Moved to the next day.",
+    "toast.skipMemorizationDay": "Day closed without new memorization.",
     "toast.networkError": "Network error.",
     "error.invalidPageFormat": "Invalid page format.",
     "error.invalidPageFormatExample": "Invalid page format. Use 12, 14, 20-25.",
@@ -518,6 +1006,259 @@ function localizeStaticUi(payload = state.payload) {
   });
 }
 
+function getMushafPageImageUrl(page) {
+  const safePage = Math.max(1, Number.parseInt(page, 10) || 1);
+  return `${MUSHAF_PAGE_IMAGE_BASE}/p${String(safePage).padStart(4, "0")}.gif`;
+}
+
+async function ensureUthmanicFont() {
+  if (loadedMushafFonts.has("UthmanicHafs")) {
+    return "UthmanicHafs";
+  }
+
+  if (!uthmanicFontPromise) {
+    uthmanicFontPromise = (async () => {
+      const fontFace = new FontFace(
+        "UthmanicHafs",
+        `url('${MUSHAF_FONT_BASE}/hafs/uthmanic_hafs/UthmanicHafs1Ver18.woff2')`,
+      );
+      fontFace.display = "swap";
+      await fontFace.load();
+      document.fonts.add(fontFace);
+      loadedMushafFonts.add("UthmanicHafs");
+      return "UthmanicHafs";
+    })().catch((error) => {
+      uthmanicFontPromise = null;
+      throw error;
+    });
+  }
+
+  return uthmanicFontPromise;
+}
+
+async function ensureMushafPageFont(page) {
+  const safePage = Math.max(1, Number.parseInt(page, 10) || 1);
+  const fontName = `mushaf-p${safePage}-v2`;
+  if (loadedMushafFonts.has(fontName)) {
+    return fontName;
+  }
+
+  const fontFace = new FontFace(
+    fontName,
+    `url('${MUSHAF_FONT_BASE}/hafs/v2/woff2/p${safePage}.woff2')`,
+  );
+  fontFace.display = "swap";
+  await fontFace.load();
+  document.fonts.add(fontFace);
+  loadedMushafFonts.add(fontName);
+  return fontName;
+}
+
+function rerenderMushafSurfaces() {
+  renderPageEditorModal(state.payload);
+  bindPageEditorActions();
+  renderErrorReview(state.payload);
+  bindErrorReviewActions();
+}
+
+function normalizeMushafWord(rawWord, fallbackPage) {
+  if (!rawWord || typeof rawWord !== "object") {
+    return null;
+  }
+
+  return {
+    id: Number(rawWord.id || 0),
+    pageNumber: Number(rawWord.page_number || fallbackPage || 0),
+    lineNumber: Math.max(1, Number(rawWord.line_number || 1)),
+    charTypeName: String(rawWord.char_type_name || "word"),
+    codeV2: String(rawWord.code_v2 || rawWord.text || ""),
+    fallbackText: String(rawWord.text_qpc_hafs || rawWord.text_uthmani || rawWord.text || "").trim(),
+  };
+}
+
+function groupMushafWordsByLine(verses, page) {
+  const lines = new Map();
+
+  verses.forEach((verse) => {
+    (verse.words || []).forEach((rawWord) => {
+      const word = normalizeMushafWord(rawWord, page);
+      if (!word) {
+        return;
+      }
+      const lineNumber = word.lineNumber;
+      if (!lines.has(lineNumber)) {
+        lines.set(lineNumber, []);
+      }
+      lines.get(lineNumber).push(word);
+    });
+  });
+
+  const maxLine = Math.max(15, ...lines.keys(), 15);
+  return Array.from({ length: maxLine }, (_item, index) => ({
+    number: index + 1,
+    words: lines.get(index + 1) || [],
+  }));
+}
+
+function ensureMushafPageData(page) {
+  const safePage = Math.max(1, Number.parseInt(page, 10) || 1);
+  const key = String(safePage);
+  const cached = state.mushafPageCache[key];
+  if (cached?.status === "ready" || cached?.status === "loading") {
+    return cached;
+  }
+
+  state.mushafPageCache[key] = {
+    status: "loading",
+    lines: [],
+    page: safePage,
+    fontName: "",
+    error: "",
+  };
+
+  Promise.all([
+    ensureUthmanicFont(),
+    ensureMushafPageFont(safePage),
+    api(`${MUSHAF_API_BASE}/verses/by_page/${safePage}?words=true&word_fields=code_v2,text_qpc_hafs&per_page=50&mushaf=1`),
+  ])
+    .then(([_unicodeFont, fontName, data]) => {
+      const lines = groupMushafWordsByLine(Array.isArray(data?.verses) ? data.verses : [], safePage);
+      state.mushafPageCache[key] = {
+        status: "ready",
+        lines,
+        page: safePage,
+        fontName,
+        error: "",
+      };
+      rerenderMushafSurfaces();
+    })
+    .catch((error) => {
+      state.mushafPageCache[key] = {
+        status: "error",
+        lines: [],
+        page: safePage,
+        fontName: "",
+        error: error?.message || "Unable to load mushaf page.",
+      };
+      rerenderMushafSurfaces();
+    });
+
+  return state.mushafPageCache[key];
+}
+
+function buildMushafWordMarkup(word, fontName) {
+  if (!word) {
+    return "";
+  }
+
+  if (word.charTypeName === "end" || word.charTypeName === "pause" || word.charTypeName === "rub-el-hizb" || !fontName) {
+    return `<span class="mushaf-word unicode">${escapeHtml(word.fallbackText)}</span>`;
+  }
+
+  const selectableAttributes =
+    word.charTypeName === "word"
+      ? ` data-selectable-word="true" data-word-id="${escapeHtml(word.id)}" data-line-number="${escapeHtml(word.lineNumber)}"`
+      : "";
+
+  return `<span class="mushaf-word glyph" style="font-family:'${escapeHtml(fontName)}'"${selectableAttributes}>${word.codeV2}</span>`;
+}
+
+function buildMushafPageMarkup(page, { blurred = false } = {}) {
+  const safePage = Math.max(1, Number.parseInt(page, 10) || 1);
+  const entry = ensureMushafPageData(safePage);
+
+  if (!entry || entry.status === "loading") {
+    return `
+      <div class="mushaf-page-shell ${blurred ? "blurred" : ""}">
+        <div class="mushaf-loading">${escapeHtml(t("status.loading", {}, state.payload))}</div>
+      </div>
+    `;
+  }
+
+  if (entry.status === "error") {
+    return `
+      <div class="mushaf-page-shell ${blurred ? "blurred" : ""}">
+        <div class="mushaf-loading">${escapeHtml(entry.error || t("toast.networkError", {}, state.payload))}</div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="mushaf-page-shell ${blurred ? "blurred" : ""}" dir="rtl">
+      <div class="mushaf-page-header">
+        <span>${escapeHtml(t("quick.pageTitle", { page: safePage }, state.payload))}</span>
+      </div>
+      <div class="mushaf-page-lines">
+        ${entry.lines
+          .map(
+            (line) => `
+              <div class="mushaf-line ${line.words.length ? "" : "empty"}" data-line-number="${escapeHtml(line.number)}">
+                ${line.words.map((word) => buildMushafWordMarkup(word, entry.fontName)).join("")}
+              </div>
+            `,
+          )
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
+function buildMushafNextPagePreviewMarkup(page, payload = state.payload) {
+  const nextPage = Math.max(1, Number.parseInt(page, 10) || 1) + 1;
+  const entry = ensureMushafPageData(nextPage);
+
+  if (!entry || entry.status === "loading") {
+    return `
+      <div class="review-next-page-preview-shell">
+        <div class="mushaf-loading">${escapeHtml(t("status.loading", {}, payload))}</div>
+      </div>
+    `;
+  }
+
+  if (entry.status === "error") {
+    return `
+      <div class="review-next-page-preview-shell">
+        <div class="mushaf-loading">${escapeHtml(entry.error || t("toast.networkError", {}, payload))}</div>
+      </div>
+    `;
+  }
+
+  const visibleLines = entry.lines.filter((line) => Array.isArray(line.words) && line.words.length).slice(0, 3);
+
+  return `
+    <div class="review-next-page-preview-shell" dir="rtl">
+      <div class="review-next-page-preview-head">
+        <span>${escapeHtml(t("review.nextPagePeek", { page: nextPage }, payload))}</span>
+      </div>
+      <div class="review-next-page-preview-lines">
+        ${visibleLines
+          .map(
+            (line) => `
+              <div class="mushaf-line review-next-page-line" data-line-number="${escapeHtml(line.number)}">
+                ${line.words.map((word) => buildMushafWordMarkup(word, entry.fontName)).join("")}
+              </div>
+            `,
+          )
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
+function errorScopeToSeverity(scope) {
+  if (scope === "line" || scope === "next-page-link") {
+    return "grave";
+  }
+  if (scope === "word") {
+    return "medium";
+  }
+  return "minor";
+}
+
+function errorScopeLabel(scope, payload = state.payload) {
+  return t(`editor.scope.${scope}`, {}, payload);
+}
+
 function normalizeFirstName(value = "") {
   return String(value)
     .replace(/\s+/g, " ")
@@ -525,15 +1266,49 @@ function normalizeFirstName(value = "") {
     .slice(0, 40);
 }
 
-function getCurrentPageFromHalfPage(currentHalfPage, totalHalfPages) {
+function getProgramPhasesForMode(mode = "forward") {
+  if (mode === "reverse") {
+    return ["reverse"];
+  }
+
+  if (mode === "reverse-forward") {
+    return ["reverse", "forward"];
+  }
+
+  return ["forward"];
+}
+
+function getDirectionLabel(direction, payload = state.payload) {
+  return direction === "reverse" ? t("settings.programModeReverseOption", {}, payload) : t("settings.programModeForwardOption", {}, payload);
+}
+
+function getPhaseDirectionForMode(mode = "forward", phaseIndex = 1) {
+  const phases = getProgramPhasesForMode(mode);
+  const safeIndex = Math.min(Math.max(Number(phaseIndex) || 1, 1), phases.length);
+  return phases[safeIndex - 1] || phases[0];
+}
+
+function sequenceHalfPageToPhysicalHalfPage(currentHalfPage, totalHalfPages, direction = "forward") {
   const safeTotal = Math.max(2, Number(totalHalfPages) || 2);
   const safeHalfPage = Math.max(1, Math.min(Number(currentHalfPage) || 1, safeTotal));
+  return direction === "reverse" ? safeTotal - safeHalfPage + 1 : safeHalfPage;
+}
+
+function physicalHalfPageToSequenceHalfPage(currentHalfPage, totalHalfPages, direction = "forward") {
+  const safeTotal = Math.max(2, Number(totalHalfPages) || 2);
+  const safeHalfPage = Math.max(1, Math.min(Number(currentHalfPage) || 1, safeTotal));
+  return direction === "reverse" ? safeTotal - safeHalfPage + 1 : safeHalfPage;
+}
+
+function getCurrentPageFromHalfPage(currentHalfPage, totalHalfPages, direction = "forward") {
+  const safeTotal = Math.max(2, Number(totalHalfPages) || 2);
+  const safeHalfPage = sequenceHalfPageToPhysicalHalfPage(currentHalfPage, safeTotal, direction);
   return Math.ceil(safeHalfPage / 2);
 }
 
-function getCurrentHalfLabelFromHalfPage(currentHalfPage, totalHalfPages) {
+function getCurrentHalfLabelFromHalfPage(currentHalfPage, totalHalfPages, direction = "forward") {
   const safeTotal = Math.max(2, Number(totalHalfPages) || 2);
-  const safeHalfPage = Math.max(1, Math.min(Number(currentHalfPage) || 1, safeTotal));
+  const safeHalfPage = sequenceHalfPageToPhysicalHalfPage(currentHalfPage, safeTotal, direction);
   return safeHalfPage % 2 === 0 ? "basse" : "haute";
 }
 
@@ -560,12 +1335,159 @@ function syncDailyNewPresets() {
   });
 }
 
-function getCurrentHalfPageFromForm() {
+function getPhaseLabel(mode, phaseIndex, payload = state.payload) {
+  if (mode === "reverse-forward") {
+    return phaseIndex === 1 ? t("settings.phaseReverseOption", {}, payload) : t("settings.phaseForwardOption", {}, payload);
+  }
+
+  return t("settings.phaseSingleOption", { direction: getDirectionLabel(getPhaseDirectionForMode(mode, phaseIndex), payload) }, payload);
+}
+
+function formatPagesValueFromHalfPages(halfPages, payload = state.payload) {
+  return formatPageCountFromHalfPages(Math.max(0, Number(halfPages) || 0) * 2 / 2, payload);
+}
+
+function formatCoveredPagesValue(halfPages, payload = state.payload) {
+  return formatPageCountFromHalfPages(Math.max(0, Number(halfPages) || 0), payload);
+}
+
+function parseCoveredPagesToHalfPages(rawValue, totalHalfPages) {
+  const normalized = Number.parseFloat(String(rawValue || "").replace(",", "."));
+  if (!Number.isFinite(normalized)) {
+    return 0;
+  }
+
+  const safePages = Math.max(0, Math.min(normalized, totalHalfPages / 2));
+  return Math.round(safePages * 2);
+}
+
+function getPhaseProgressHalfPagesFromPayload(payload = state.payload, mode = payload?.settings?.programMode || "forward") {
+  const phases = getProgramPhasesForMode(mode);
+  const totalHalfPages = Math.max(2, Number(payload?.settings?.totalHalfPages) || 2);
+  const raw = Array.isArray(payload?.progress?.phaseProgressHalfPages) ? payload.progress.phaseProgressHalfPages : [];
+  return phases.map((_, index) => Math.max(0, Math.min(Number(raw[index]) || 0, totalHalfPages)));
+}
+
+function getPhaseProgressHalfPagesFromForm() {
   const totalHalfPages = Math.max(2, Number($("#total-half-pages")?.value) || 2);
-  const totalPages = Math.max(1, Math.ceil(totalHalfPages / 2));
-  const currentPage = Math.min(totalPages, Math.max(1, Number($("#current-page")?.value) || 1));
-  const currentHalf = $("#current-half")?.value === "basse" ? "basse" : "haute";
-  return (currentPage - 1) * 2 + (currentHalf === "basse" ? 2 : 1);
+  const mode = $("#program-mode")?.value || "forward";
+  const phases = getProgramPhasesForMode(mode);
+  return phases.map((_phase, index) =>
+    parseCoveredPagesToHalfPages($(`[data-phase-pages="${index + 1}"]`)?.value, totalHalfPages),
+  );
+}
+
+function getSelectedPhaseIndex(payload = state.payload, mode = $("#program-mode")?.value || payload?.settings?.programMode || "forward") {
+  const phases = getProgramPhasesForMode(mode);
+  return Math.min(Math.max(Number($("#phase-index")?.value || payload?.progress?.phaseIndex || 1), 1), phases.length);
+}
+
+function getCurrentPointLabelFromPhaseProgress(completedHalfPages, totalHalfPages, direction, payload = state.payload) {
+  const safeCompleted = Math.max(0, Math.min(Number(completedHalfPages) || 0, totalHalfPages));
+  if (safeCompleted >= totalHalfPages) {
+    return t("settings.phaseStatusDone", {}, payload);
+  }
+
+  const nextHalfPage = safeCompleted + 1;
+  const page = getCurrentPageFromHalfPage(nextHalfPage, totalHalfPages, direction);
+  const half = getCurrentHalfLabelFromHalfPage(nextHalfPage, totalHalfPages, direction);
+  return `${t("page.label", { page }, payload)} - ${half === "basse" ? t("settings.lowerHalfOption", {}, payload) : t("settings.upperHalfOption", {}, payload)}`;
+}
+
+function renderPhaseProgressEditor(payload = state.payload, options = {}) {
+  const container = $("#phase-progress-grid");
+  if (!container) {
+    return;
+  }
+
+  const preserveDraft = Boolean(options.preserveDraft);
+  const mode = $("#program-mode")?.value || payload?.settings?.programMode || "forward";
+  const phases = getProgramPhasesForMode(mode);
+  const totalHalfPages = Math.max(2, Number($("#total-half-pages")?.value || payload?.settings?.totalHalfPages) || 2);
+  const phaseProgressHalfPages = preserveDraft
+    ? getPhaseProgressHalfPagesFromForm()
+    : getPhaseProgressHalfPagesFromPayload(payload, mode);
+  const activePhaseIndex = getSelectedPhaseIndex(payload, mode);
+  if ($("#phase-index")) {
+    $("#phase-index").value = String(activePhaseIndex);
+  }
+  const cards = phases.map((direction, index) => {
+    const phaseNumber = index + 1;
+    const coveredHalfPages = Math.max(0, Math.min(phaseProgressHalfPages[index] || 0, totalHalfPages));
+    const isDone = coveredHalfPages >= totalHalfPages;
+    const isDisplayed = activePhaseIndex === phaseNumber;
+    const statusLabel = isDone ? t("settings.phaseStatusDone", {}, payload) : t("settings.phaseStatusActive", {}, payload);
+    const currentLabel = getCurrentPointLabelFromPhaseProgress(coveredHalfPages, totalHalfPages, direction, payload);
+    const coveredPagesValue = Number.isInteger(coveredHalfPages / 2)
+      ? String(coveredHalfPages / 2)
+      : (coveredHalfPages / 2).toFixed(1);
+    const completionPercent = Math.max(0, Math.min(100, Math.round((coveredHalfPages / totalHalfPages) * 100)));
+
+    return `
+      <article class="phase-progress-card ${isDone ? "done" : ""} ${isDisplayed ? "displayed" : ""}">
+        <div class="phase-progress-head">
+          <div>
+            <p class="eyebrow">${escapeHtml(getPhaseLabel(mode, phaseNumber, payload))}</p>
+            <strong>${escapeHtml(getDirectionLabel(direction, payload))}</strong>
+          </div>
+          <div class="phase-progress-status-stack">
+            <span class="phase-progress-status ${isDone ? "done" : "active"}">${escapeHtml(statusLabel)}</span>
+            <button
+              type="button"
+              class="phase-progress-display ${isDisplayed ? "active" : ""}"
+              data-phase-display="${escapeHtml(phaseNumber)}"
+            >
+              ${escapeHtml(isDisplayed ? t("settings.phaseDisplayActive", {}, payload) : t("settings.phaseDisplayButton", {}, payload))}
+            </button>
+          </div>
+        </div>
+        <label class="phase-progress-field">
+          <span>${escapeHtml(t("settings.phaseCoveredLabel", {}, payload))}</span>
+          <input
+            type="number"
+            min="0"
+            max="${escapeHtml(totalHalfPages / 2)}"
+            step="0.5"
+            value="${escapeHtml(coveredPagesValue)}"
+            data-phase-pages="${escapeHtml(phaseNumber)}"
+          />
+          <small>${escapeHtml(t("settings.phaseCoveredHelp", {}, payload))}</small>
+        </label>
+        <div class="phase-progress-meter">
+          <div class="phase-progress-track" aria-hidden="true">
+            <span style="width:${escapeHtml(completionPercent)}%"></span>
+          </div>
+          <span>${escapeHtml(formatCoveredPagesValue(coveredHalfPages, payload))}</span>
+        </div>
+        <div class="phase-progress-note">
+          <span>${escapeHtml(t("settings.phaseNextLabel", {}, payload))}</span>
+          <strong>${escapeHtml(currentLabel)}</strong>
+        </div>
+      </article>
+    `;
+  });
+
+  container.innerHTML = `
+    <div class="phase-progress-intro">
+      <p class="helper">${escapeHtml(t("settings.phaseAutoHelp", {}, payload))}</p>
+    </div>
+    ${cards.join("")}
+  `;
+
+  $all("[data-phase-pages]").forEach((input) => {
+    input.addEventListener("change", () => {
+      renderPhaseProgressEditor(payload, { preserveDraft: true });
+    });
+  });
+
+  $all("[data-phase-display]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if ($("#phase-index")) {
+        $("#phase-index").value = String(button.dataset.phaseDisplay || "1");
+      }
+      renderPhaseProgressEditor(payload, { preserveDraft: true });
+    });
+  });
 }
 
 async function api(path, options = {}) {
@@ -616,7 +1538,7 @@ function formatPageCountFromHalfPages(halfPageCount, payload = state.payload) {
 function cardClassName(blockKey, block) {
   const focus = state.payload?.plan ? getCurrentFocusBlock(state.payload.plan) : null;
   const isCurrent = focus?.key === blockKey;
-  return `card card-${blockKey} ${block.done ? "done" : ""} ${block.present ? "" : "empty"} ${block.locked ? "locked" : ""} ${isCurrent ? "current-card" : ""}`;
+  return `card card-${blockKey} ${block.dayComplete ? "done" : ""} ${block.present ? "" : "empty"} ${block.locked ? "locked" : ""} ${isCurrent ? "current-card" : ""}`;
 }
 
 function isCardExpanded(blockKey, block) {
@@ -668,10 +1590,53 @@ function normalizePageEntry(entry) {
           return null;
         }
 
+        const scope = ["harakah", "word", "line", "next-page-link"].includes(event.scope)
+          ? event.scope
+          : severity === "grave"
+            ? "line"
+            : severity === "medium"
+              ? "word"
+              : "harakah";
+
         return {
+          id: typeof event.id === "string" ? event.id : "",
           severity,
+          scope,
+          rect:
+            event.rect &&
+            typeof event.rect === "object" &&
+            Number.isFinite(Number(event.rect.x)) &&
+            Number.isFinite(Number(event.rect.y)) &&
+            Number.isFinite(Number(event.rect.width)) &&
+            Number.isFinite(Number(event.rect.height))
+              ? {
+                  x: Math.max(0, Math.min(1, Number(event.rect.x))),
+                  y: Math.max(0, Math.min(1, Number(event.rect.y))),
+                  width: Math.max(0, Math.min(1, Number(event.rect.width))),
+                  height: Math.max(0, Math.min(1, Number(event.rect.height))),
+                }
+              : null,
           note: String(event.note || "").trim(),
           createdAt: typeof event.createdAt === "string" ? event.createdAt : "",
+          review:
+            event.review && typeof event.review === "object"
+              ? {
+                  dueAt: typeof event.review.dueAt === "string" ? event.review.dueAt : "",
+                  lastReviewedAt: typeof event.review.lastReviewedAt === "string" ? event.review.lastReviewedAt : "",
+                  lastResult: ["new", "success", "failure"].includes(event.review.lastResult) ? event.review.lastResult : "new",
+                  intervalHours: Math.max(0, Number(event.review.intervalHours || 0)),
+                  successCount: Math.max(0, Number(event.review.successCount || 0)),
+                  failureCount: Math.max(0, Number(event.review.failureCount || 0)),
+                }
+              : {
+                  dueAt: typeof event.createdAt === "string" ? event.createdAt : "",
+                  lastReviewedAt: "",
+                  lastResult: "new",
+                  intervalHours: 0,
+                  successCount: 0,
+                  failureCount: 0,
+                },
+          anchor: normalizeSelectionAnchor(event.anchor, scope),
         };
       })
       .filter(Boolean),
@@ -691,6 +1656,235 @@ function normalizePageEntry(entry) {
   normalized.hasNotes = Boolean(normalized.latestNoteEvent);
 
   return normalized;
+}
+
+function normalizeErrorReviewItem(item) {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+
+  const severity = ["minor", "medium", "grave"].includes(item.severity) ? item.severity : null;
+  if (!severity) {
+    return null;
+  }
+
+  const scope = ["harakah", "word", "line", "next-page-link"].includes(item.scope)
+    ? item.scope
+    : severity === "grave"
+      ? "line"
+      : severity === "medium"
+        ? "word"
+        : "harakah";
+
+  return {
+    id: typeof item.id === "string" ? item.id : "",
+    page: Math.max(1, Number.parseInt(item.page, 10) || 1),
+    severity,
+    scope,
+    note: String(item.note || "").trim(),
+    rect: sanitizeSelectionRect(item.rect),
+    anchor: normalizeSelectionAnchor(item.anchor, scope),
+    createdAt: typeof item.createdAt === "string" ? item.createdAt : "",
+    review:
+      item.review && typeof item.review === "object"
+        ? {
+            dueAt: typeof item.review.dueAt === "string" ? item.review.dueAt : "",
+            lastReviewedAt: typeof item.review.lastReviewedAt === "string" ? item.review.lastReviewedAt : "",
+            lastResult: ["new", "success", "failure"].includes(item.review.lastResult) ? item.review.lastResult : "new",
+            intervalHours: Math.max(0, Number(item.review.intervalHours || 0)),
+            successCount: Math.max(0, Number(item.review.successCount || 0)),
+            failureCount: Math.max(0, Number(item.review.failureCount || 0)),
+          }
+        : {
+            dueAt: typeof item.createdAt === "string" ? item.createdAt : "",
+            lastReviewedAt: "",
+            lastResult: "new",
+            intervalHours: 0,
+            successCount: 0,
+            failureCount: 0,
+          },
+  };
+}
+
+function getReviewRevealedItemIds() {
+  return Array.isArray(state.reviewState?.revealedItemIds)
+    ? [...new Set(state.reviewState.revealedItemIds.map((itemId) => String(itemId || "").trim()).filter(Boolean))]
+    : [];
+}
+
+function setReviewRevealedItemIds(itemIds) {
+  state.reviewState.revealedItemIds = [...new Set((Array.isArray(itemIds) ? itemIds : []).map((itemId) => String(itemId || "").trim()).filter(Boolean))];
+}
+
+function getReviewSelectedPage() {
+  const page = Number.parseInt(state.reviewState?.selectedPage, 10);
+  return Number.isInteger(page) && page > 0 ? page : null;
+}
+
+function setReviewSelectedPage(page) {
+  const safePage = Number.parseInt(page, 10);
+  state.reviewState.selectedPage = Number.isInteger(safePage) && safePage > 0 ? safePage : null;
+}
+
+function getReviewCompletedItemsForPage(page) {
+  const safePage = Number.parseInt(page, 10);
+  if (!Number.isInteger(safePage) || safePage < 1) {
+    return [];
+  }
+
+  const map = state.reviewState?.completedItemsByPage;
+  const rawItems = map && typeof map === "object" ? map[String(safePage)] : [];
+  return Array.isArray(rawItems)
+    ? rawItems.map((item) => normalizeErrorReviewItem(item)).filter(Boolean)
+    : [];
+}
+
+function setReviewCompletedItemsForPage(page, items) {
+  const safePage = Number.parseInt(page, 10);
+  if (!Number.isInteger(safePage) || safePage < 1) {
+    return;
+  }
+
+  const normalizedItems = Array.isArray(items)
+    ? items
+        .map((item) => normalizeErrorReviewItem(item))
+        .filter(Boolean)
+        .filter((item, index, array) => array.findIndex((candidate) => candidate.id === item.id) === index)
+    : [];
+
+  if (!state.reviewState.completedItemsByPage || typeof state.reviewState.completedItemsByPage !== "object") {
+    state.reviewState.completedItemsByPage = {};
+  }
+
+  if (!normalizedItems.length) {
+    delete state.reviewState.completedItemsByPage[String(safePage)];
+    return;
+  }
+
+  state.reviewState.completedItemsByPage[String(safePage)] = normalizedItems;
+}
+
+function pruneReviewCompletedItems(activePage) {
+  const safePage = Number.parseInt(activePage, 10);
+  if (!state.reviewState.completedItemsByPage || typeof state.reviewState.completedItemsByPage !== "object") {
+    state.reviewState.completedItemsByPage = {};
+    return;
+  }
+
+  if (!Number.isInteger(safePage) || safePage < 1) {
+    state.reviewState.completedItemsByPage = {};
+    return;
+  }
+
+  const currentItems = state.reviewState.completedItemsByPage[String(safePage)];
+  state.reviewState.completedItemsByPage = currentItems ? { [String(safePage)]: currentItems } : {};
+}
+
+function resetReviewSwipeState() {
+  state.reviewSwipe.itemId = "";
+  state.reviewSwipe.startX = 0;
+  state.reviewSwipe.currentX = 0;
+}
+
+function getReviewItemVisualOrder(item) {
+  const anchorLine = Number.parseInt(item?.anchor?.lineNumber, 10);
+  const rect = sanitizeSelectionRect(item?.rect);
+  const lineOrder = Number.isInteger(anchorLine) && anchorLine > 0 ? anchorLine : rect ? Math.round(rect.y * 1000) + 100 : 9999;
+  const topOrder = rect ? rect.y : lineOrder / 1000;
+  const horizontalOrder = rect ? -(rect.x + rect.width / 2) : 0;
+  const sizeOrder = rect ? rect.width * rect.height : item?.scope === "next-page-link" ? 1 : 0;
+
+  return {
+    lineOrder,
+    topOrder,
+    horizontalOrder,
+    sizeOrder,
+    createdAt: typeof item?.createdAt === "string" ? item.createdAt : "",
+  };
+}
+
+function compareReviewItemsOnPage(left, right) {
+  const leftOrder = getReviewItemVisualOrder(left);
+  const rightOrder = getReviewItemVisualOrder(right);
+
+  if (leftOrder.lineOrder !== rightOrder.lineOrder) {
+    return leftOrder.lineOrder - rightOrder.lineOrder;
+  }
+
+  if (Math.abs(leftOrder.topOrder - rightOrder.topOrder) > 0.002) {
+    return leftOrder.topOrder - rightOrder.topOrder;
+  }
+
+  if (Math.abs(leftOrder.horizontalOrder - rightOrder.horizontalOrder) > 0.002) {
+    return leftOrder.horizontalOrder - rightOrder.horizontalOrder;
+  }
+
+  if (Math.abs(leftOrder.sizeOrder - rightOrder.sizeOrder) > 0.0005) {
+    return leftOrder.sizeOrder - rightOrder.sizeOrder;
+  }
+
+  return leftOrder.createdAt.localeCompare(rightOrder.createdAt);
+}
+
+function buildReviewPageGroups(items = []) {
+  const groups = [];
+  const byPage = new Map();
+
+  items.forEach((item) => {
+    if (!item) {
+      return;
+    }
+
+    const pageKey = String(item.page || "");
+    if (!byPage.has(pageKey)) {
+      const group = {
+        page: item.page,
+        items: [],
+      };
+      byPage.set(pageKey, group);
+      groups.push(group);
+    }
+
+    byPage.get(pageKey).items.push(item);
+  });
+
+  groups.forEach((group) => {
+    group.items.sort(compareReviewItemsOnPage);
+  });
+
+  return groups;
+}
+
+function buildAllErrorReviewItems(payload = state.payload) {
+  const pageErrors = payload?.pageErrors || {};
+  return Object.entries(pageErrors).flatMap(([pageKey, rawEntry]) => {
+    const page = Number.parseInt(pageKey, 10);
+    const entry = normalizePageEntry(rawEntry, page);
+    if (!entry?.events?.length) {
+      return [];
+    }
+
+    return entry.events
+      .filter((event) => event.rect || event.scope === "next-page-link")
+      .map((event) =>
+        normalizeErrorReviewItem({
+          id: event.id,
+          page,
+          severity: event.severity,
+          scope: event.scope,
+          note: event.note,
+          rect: event.rect,
+          anchor: event.anchor,
+          createdAt: event.createdAt,
+          review: event.review,
+        }),
+      )
+      .filter(Boolean);
+  });
+}
+
+function isReviewItemMastered(item) {
+  return Math.max(0, Number(item?.review?.successCount || 0)) >= 3 && Math.max(0, Number(item?.review?.intervalHours || 0)) >= 72;
 }
 
 function setQuickNoteDraft(page, value) {
@@ -725,6 +1919,25 @@ function clearQuickNoteDraft(page) {
 }
 
 function formatEventTimestamp(createdAt, payload = state.payload) {
+  if (!createdAt) {
+    return "";
+  }
+
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const locale = getLanguage(payload) === "en" ? "en-GB" : "fr-FR";
+  return new Intl.DateTimeFormat(locale, {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function formatReviewTimestamp(createdAt, payload = state.payload) {
   if (!createdAt) {
     return "";
   }
@@ -832,6 +2045,10 @@ function getSelectedPages(totalPages) {
 
 function setActiveView(view) {
   state.activeView = view;
+  if (view !== "pages" && state.pageEditor.open) {
+    closePageEditor();
+    renderPageEditorModal(state.payload);
+  }
   document.body.classList.toggle("pages-view-active", view === "pages");
   $all("[data-view-target]").forEach((button) => {
     button.classList.toggle("active", button.dataset.viewTarget === view);
@@ -839,6 +2056,343 @@ function setActiveView(view) {
   $all(".content-view").forEach((panel) => {
     panel.classList.toggle("active", panel.id === `view-${view}`);
   });
+}
+
+function openPageEditor(page) {
+  const safePage = Number(page);
+  if (!Number.isInteger(safePage) || safePage < 1) {
+    return;
+  }
+
+  state.pageEditor = {
+    open: true,
+    page: safePage,
+    scope: "word",
+    note: "",
+    rawRect: null,
+    rect: null,
+    anchor: null,
+    selectionOrigin: null,
+  };
+}
+
+function closePageEditor() {
+  state.pageEditor = {
+    open: false,
+    page: null,
+    scope: "word",
+    note: "",
+    rawRect: null,
+    rect: null,
+    anchor: null,
+    selectionOrigin: null,
+  };
+}
+
+function clampUnit(value) {
+  return Math.max(0, Math.min(1, Number(value) || 0));
+}
+
+function buildNormalizedRectFromPoints(start, end) {
+  if (!start || !end) {
+    return null;
+  }
+
+  const x = clampUnit(Math.min(start.x, end.x));
+  const y = clampUnit(Math.min(start.y, end.y));
+  const right = clampUnit(Math.max(start.x, end.x));
+  const bottom = clampUnit(Math.max(start.y, end.y));
+  const width = Math.max(0, right - x);
+  const height = Math.max(0, bottom - y);
+
+  if (width < 0.01 || height < 0.01) {
+    return null;
+  }
+
+  return {
+    x: Number(x.toFixed(4)),
+    y: Number(y.toFixed(4)),
+    width: Number(width.toFixed(4)),
+    height: Number(height.toFixed(4)),
+  };
+}
+
+function getNormalizedPointerPosition(event, element) {
+  const bounds = element.getBoundingClientRect();
+  if (!bounds.width || !bounds.height) {
+    return { x: 0, y: 0 };
+  }
+
+  return {
+    x: clampUnit((event.clientX - bounds.left) / bounds.width),
+    y: clampUnit((event.clientY - bounds.top) / bounds.height),
+  };
+}
+
+function selectionRectStyle(rect) {
+  if (!rect) {
+    return "";
+  }
+
+  return `left:${escapeHtml(rect.x * 100)}%;top:${escapeHtml(rect.y * 100)}%;width:${escapeHtml(rect.width * 100)}%;height:${escapeHtml(
+    rect.height * 100,
+  )}%;`;
+}
+
+function sanitizeSelectionRect(rawRect) {
+  if (!rawRect || typeof rawRect !== "object") {
+    return null;
+  }
+
+  const x = clampUnit(rawRect.x);
+  const y = clampUnit(rawRect.y);
+  const right = clampUnit(Number(rawRect.x) + Number(rawRect.width));
+  const bottom = clampUnit(Number(rawRect.y) + Number(rawRect.height));
+  const width = Math.max(0, right - x);
+  const height = Math.max(0, bottom - y);
+
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) {
+    return null;
+  }
+
+  if (width < 0.001 || height < 0.001) {
+    return null;
+  }
+
+  return {
+    x: Number(x.toFixed(4)),
+    y: Number(y.toFixed(4)),
+    width: Number(width.toFixed(4)),
+    height: Number(height.toFixed(4)),
+  };
+}
+
+function buildPointRect(point, size = 0.014) {
+  if (!point || typeof point !== "object") {
+    return null;
+  }
+
+  const half = Math.max(0.004, Number(size) || 0.014) / 2;
+  return sanitizeSelectionRect({
+    x: Number(point.x) - half,
+    y: Number(point.y) - half,
+    width: half * 2,
+    height: half * 2,
+  });
+}
+
+function normalizeSelectionAnchor(anchor, scope = "") {
+  if (!anchor || typeof anchor !== "object") {
+    return null;
+  }
+
+  const kind = anchor.kind === "line" ? "line" : anchor.kind === "word" ? "word" : "";
+  if (!kind) {
+    return null;
+  }
+
+  if ((scope === "line" || scope === "next-page-link") && kind !== "line") {
+    return null;
+  }
+
+  if (scope && scope !== "line" && scope !== "next-page-link" && kind !== "word") {
+    return null;
+  }
+
+  const lineNumber = Number.parseInt(anchor.lineNumber, 10);
+  if (!Number.isInteger(lineNumber) || lineNumber < 1) {
+    return null;
+  }
+
+  if (kind === "line") {
+    return {
+      kind,
+      lineNumber,
+    };
+  }
+
+  const wordId = Number.parseInt(anchor.wordId, 10);
+  if (!Number.isInteger(wordId) || wordId < 1) {
+    return null;
+  }
+
+  return {
+    kind,
+    lineNumber,
+    wordId,
+  };
+}
+
+function getRectCenter(rect) {
+  if (!rect) {
+    return { x: 0.5, y: 0.5 };
+  }
+
+  return {
+    x: rect.x + rect.width / 2,
+    y: rect.y + rect.height / 2,
+  };
+}
+
+function getRectOverlapArea(left, right) {
+  if (!left || !right) {
+    return 0;
+  }
+
+  const overlapWidth = Math.max(0, Math.min(left.x + left.width, right.x + right.width) - Math.max(left.x, right.x));
+  const overlapHeight = Math.max(0, Math.min(left.y + left.height, right.y + right.height) - Math.max(left.y, right.y));
+  return overlapWidth * overlapHeight;
+}
+
+function getRectCenterDistance(left, right) {
+  const leftCenter = getRectCenter(left);
+  const rightCenter = getRectCenter(right);
+  const deltaX = leftCenter.x - rightCenter.x;
+  const deltaY = leftCenter.y - rightCenter.y;
+  return deltaX * deltaX + deltaY * deltaY;
+}
+
+function getRelativeRectFromBounds(targetBounds, containerBounds) {
+  if (!targetBounds || !containerBounds || !containerBounds.width || !containerBounds.height) {
+    return null;
+  }
+
+  return sanitizeSelectionRect({
+    x: (targetBounds.left - containerBounds.left) / containerBounds.width,
+    y: (targetBounds.top - containerBounds.top) / containerBounds.height,
+    width: targetBounds.width / containerBounds.width,
+    height: targetBounds.height / containerBounds.height,
+  });
+}
+
+function buildSelectionAnchorFromElement(element, scope = "") {
+  if (!element) {
+    return null;
+  }
+
+  if (scope === "line" || scope === "next-page-link") {
+    return normalizeSelectionAnchor(
+      {
+        kind: "line",
+        lineNumber: element.dataset.lineNumber,
+      },
+      scope,
+    );
+  }
+
+  return normalizeSelectionAnchor(
+    {
+      kind: "word",
+      wordId: element.dataset.wordId,
+      lineNumber: element.dataset.lineNumber,
+    },
+    scope,
+  );
+}
+
+function resolveSelectionRectFromAnchor(frame, anchor) {
+  const safeAnchor = normalizeSelectionAnchor(anchor);
+  if (!frame || !safeAnchor) {
+    return null;
+  }
+
+  let target = null;
+  if (safeAnchor.kind === "line") {
+    target = frame.querySelector(`.mushaf-line[data-line-number="${safeAnchor.lineNumber}"]`);
+  } else {
+    target = frame.querySelector(`[data-selectable-word="true"][data-word-id="${safeAnchor.wordId}"]`);
+  }
+
+  if (!target) {
+    return null;
+  }
+
+  return getRelativeRectFromBounds(target.getBoundingClientRect(), frame.getBoundingClientRect());
+}
+
+function applySelectionRectToElement(frame, element, item) {
+  if (!frame || !element || !item) {
+    return;
+  }
+
+  const anchoredRect = resolveSelectionRectFromAnchor(frame, item.anchor);
+  const storedRect = sanitizeSelectionRect(item.rect);
+  const baseRect = anchoredRect || storedRect;
+  const rect =
+    item.scope === "next-page-link" && baseRect
+      ? sanitizeSelectionRect({
+          x: 0.035,
+          y: Math.max(0.02, baseRect.y - 0.01),
+          width: 0.93,
+          height: Math.max(baseRect.height + 0.02, 0.09),
+        })
+      : baseRect;
+  if (!rect) {
+    element.style.cssText = "";
+    return;
+  }
+
+  element.style.cssText = selectionRectStyle(rect);
+}
+
+function snapPageEditorSelection(stage, rawRect, scope = "word") {
+  const safeRawRect = sanitizeSelectionRect(rawRect);
+  if (!stage || !safeRawRect) {
+    return {
+      rawRect: safeRawRect,
+      rect: safeRawRect,
+      anchor: null,
+    };
+  }
+
+  const frame = stage.closest(".page-editor-image-frame");
+  if (!frame) {
+    return {
+      rawRect: safeRawRect,
+      rect: safeRawRect,
+      anchor: null,
+    };
+  }
+
+  const selector = scope === "line" || scope === "next-page-link" ? ".mushaf-line:not(.empty)" : '[data-selectable-word="true"]';
+  const targets = Array.from(frame.querySelectorAll(selector));
+  const frameBounds = frame.getBoundingClientRect();
+  if (!targets.length || !frameBounds.width || !frameBounds.height) {
+    return {
+      rawRect: safeRawRect,
+      rect: safeRawRect,
+      anchor: null,
+    };
+  }
+
+  let bestTarget = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  targets.forEach((target) => {
+    const targetRect = getRelativeRectFromBounds(target.getBoundingClientRect(), frameBounds);
+    const anchor = buildSelectionAnchorFromElement(target, scope);
+    if (!targetRect || !anchor) {
+      return;
+    }
+
+    const overlapArea = getRectOverlapArea(safeRawRect, targetRect);
+    const distanceScore = getRectCenterDistance(safeRawRect, targetRect);
+    const score = overlapArea > 0 ? overlapArea * 1000 - distanceScore : -distanceScore;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestTarget = {
+        rect: targetRect,
+        anchor,
+      };
+    }
+  });
+
+  return {
+    rawRect: safeRawRect,
+    rect: bestTarget?.rect || safeRawRect,
+    anchor: bestTarget?.anchor || null,
+  };
 }
 
 function getPrimaryProgramZone(programZones) {
@@ -855,8 +2409,32 @@ function getPrimaryProgramZoneInfo(programZones) {
   return programZones.find((zone) => zone.key === zoneKey) || null;
 }
 
-function isLearnedFromProgram(programZones) {
-  return programZones.some((zone) => zone.key !== "new");
+function buildLearnedRangeFromProgress(completedHalfPages, totalHalfPages, direction = "forward") {
+  const safeCompleted = Math.max(0, Math.min(Number(completedHalfPages) || 0, totalHalfPages));
+  if (!safeCompleted) {
+    return null;
+  }
+
+  const physicalStart = sequenceHalfPageToPhysicalHalfPage(1, totalHalfPages, direction);
+  const physicalEnd = sequenceHalfPageToPhysicalHalfPage(safeCompleted, totalHalfPages, direction);
+  return {
+    coverageStart: Math.min(physicalStart, physicalEnd),
+    coverageEnd: Math.max(physicalStart, physicalEnd),
+  };
+}
+
+function getLearnedRangesFromPayload(payload = state.payload) {
+  const mode = payload?.settings?.programMode || "forward";
+  const totalHalfPages = Math.max(2, Number(payload?.settings?.totalHalfPages) || 2);
+  const phases = getProgramPhasesForMode(mode);
+  const phaseProgressHalfPages = getPhaseProgressHalfPagesFromPayload(payload, mode);
+  return phases
+    .map((direction, index) => buildLearnedRangeFromProgress(phaseProgressHalfPages[index] || 0, totalHalfPages, direction))
+    .filter(Boolean);
+}
+
+function isLearnedFromProgram(payload, page) {
+  return getLearnedRangesFromPayload(payload).some((range) => pageIntersectsRange(page, range));
 }
 
 function pageCellClass(entry, page, effectiveLearned, programZones) {
@@ -869,6 +2447,7 @@ function pageCellClass(entry, page, effectiveLearned, programZones) {
 
   if (effectiveLearned) {
     classes.push("learned");
+    classes.push("learned-from-program");
   }
 
   const primaryZone = getPrimaryProgramZone(programZones);
@@ -894,7 +2473,875 @@ function pageIntersectsRange(page, range) {
 
   const pageStart = (page - 1) * 2 + 1;
   const pageEnd = page * 2;
-  return range.start <= pageEnd && range.end >= pageStart;
+  const coverageStart = Number.isFinite(range.coverageStart) ? range.coverageStart : range.start;
+  const coverageEnd = Number.isFinite(range.coverageEnd) ? range.coverageEnd : range.end;
+  return coverageStart <= pageEnd && coverageEnd >= pageStart;
+}
+
+function getSurahsForPage(page) {
+  return SURAH_PAGE_RANGES.filter((surah) => page >= surah.startPage && page <= surah.endPage);
+}
+
+function buildJuzPageRanges(totalPages) {
+  const safeTotalPages = Math.max(1, Number.parseInt(totalPages, 10) || 1);
+  return JUZ_START_PAGES
+    .map((startPage, index) => {
+      const nextStart = JUZ_START_PAGES[index + 1];
+      const naturalEnd = nextStart ? nextStart - 1 : 604;
+      return {
+        juz: index + 1,
+        startPage,
+        endPage: index === JUZ_START_PAGES.length - 1 ? safeTotalPages : Math.min(safeTotalPages, naturalEnd),
+        name: JUZ_NAMES[index]?.latin || `Juz ${index + 1}`,
+        arabicName: JUZ_NAMES[index]?.arabic || "",
+      };
+    })
+    .filter((range) => range.startPage <= safeTotalPages && range.startPage <= range.endPage);
+}
+
+function ensureCollapsedJuzState(totalPages) {
+  const groups = buildJuzPageRanges(totalPages);
+  const nextCollapsedState = {};
+
+  groups.forEach((group) => {
+    nextCollapsedState[group.juz] =
+      typeof state.collapsedJuzs?.[group.juz] === "boolean" ? state.collapsedJuzs[group.juz] : true;
+  });
+
+  state.collapsedJuzs = nextCollapsedState;
+  return groups;
+}
+
+function getPrimarySurahForPage(page) {
+  const surahs = getSurahsForPage(page);
+  return surahs.find((surah) => surah.startPage === page) || surahs[0] || null;
+}
+
+function getSurahStartNamesForPage(page) {
+  return getSurahsForPage(page).filter((surah) => surah.startPage === page);
+}
+
+function buildSurahCaption(page) {
+  const primarySurah = getPrimarySurahForPage(page);
+  if (!primarySurah) {
+    return null;
+  }
+
+  return {
+    simple: primarySurah.simple,
+    arabic: primarySurah.arabic,
+    startsHere: primarySurah.startPage === page,
+  };
+}
+
+function getSurahsForRange(range) {
+  if (!range) {
+    return [];
+  }
+
+  const coverageStart = Number.isFinite(range.coverageStart)
+    ? range.coverageStart
+    : Math.min(range.physicalStart || range.start || 0, range.physicalEnd || range.end || 0);
+  const coverageEnd = Number.isFinite(range.coverageEnd)
+    ? range.coverageEnd
+    : Math.max(range.physicalStart || range.start || 0, range.physicalEnd || range.end || 0);
+
+  if (!coverageStart || !coverageEnd) {
+    return [];
+  }
+
+  const startPage = Math.ceil(coverageStart / 2);
+  const endPage = Math.ceil(coverageEnd / 2);
+  return SURAH_PAGE_RANGES.filter((surah) => surah.endPage >= startPage && surah.startPage <= endPage);
+}
+
+function getRangeSurahSummary(range) {
+  const surahs = getSurahsForRange(range);
+  if (!surahs.length) {
+    return null;
+  }
+
+  const firstSurah = surahs[0];
+  const lastSurah = surahs[surahs.length - 1];
+  const summary =
+    surahs.length === 1
+      ? firstSurah.simple
+      : surahs.length === 2
+        ? `${firstSurah.simple} -> ${lastSurah.simple}`
+        : `${firstSurah.simple} -> ${lastSurah.simple} (+${surahs.length - 2})`;
+
+  return {
+    surahs,
+    summary,
+    firstSurah,
+    lastSurah,
+  };
+}
+
+function buildRangeSurahSummaryText(range) {
+  return getRangeSurahSummary(range)?.summary || "";
+}
+
+function buildRangeSurahChips(range, { compact = false } = {}) {
+  const summary = getRangeSurahSummary(range);
+  if (!summary) {
+    return "";
+  }
+
+  const startPage = Math.ceil(
+    (Number.isFinite(range.coverageStart) ? range.coverageStart : range.physicalStart || range.start || 1) / 2,
+  );
+  const visibleSurahs = summary.surahs.slice(0, compact ? 2 : 3);
+  const extraCount = summary.surahs.length - visibleSurahs.length;
+
+  return `
+    <div class="surah-range-row ${compact ? "compact" : ""}">
+      ${visibleSurahs
+        .map(
+          (surah) => `
+            <span class="surah-chip ${surah.startPage === startPage ? "start" : ""}">
+              <span>${escapeHtml(surah.simple)}</span>
+              <strong>${escapeHtml(surah.arabic)}</strong>
+            </span>
+          `,
+        )
+        .join("")}
+      ${extraCount > 0 ? `<span class="surah-chip more">+${escapeHtml(extraCount)}</span>` : ""}
+    </div>
+  `;
+}
+
+function getSurahById(id) {
+  return SURAH_BY_ID.get(Number(id)) || null;
+}
+
+function shuffleList(list) {
+  const copy = [...list];
+  for (let index = copy.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [copy[index], copy[swapIndex]] = [copy[swapIndex], copy[index]];
+  }
+  return copy;
+}
+
+function clampSurahId(value, fallback = 1) {
+  const maxId = SURAH_PAGE_RANGES.length || 114;
+  const safeValue = Number(value);
+  if (!Number.isFinite(safeValue)) {
+    return Math.max(1, Math.min(fallback, maxId));
+  }
+  return Math.max(1, Math.min(Math.round(safeValue), maxId));
+}
+
+function sanitizeSurahGameRange(startId = state.surahGame.rangeStartId, endId = state.surahGame.rangeEndId) {
+  const safeStart = clampSurahId(startId, 1);
+  const safeEnd = clampSurahId(endId, SURAH_PAGE_RANGES.length || 114);
+  return safeStart <= safeEnd ? { startId: safeStart, endId: safeEnd } : { startId: safeEnd, endId: safeStart };
+}
+
+function getSurahGameRangeLabel(startSurah, endSurah, payload = state.payload) {
+  if (!startSurah || !endSurah) {
+    return "";
+  }
+
+  if (startSurah.id === 1 && endSurah.id === SURAH_PAGE_RANGES.length) {
+    return t("surahs.activeSpanAll", {}, payload);
+  }
+
+  return startSurah.id === endSurah.id ? startSurah.simple : `${startSurah.simple} -> ${endSurah.simple}`;
+}
+
+function getSurahGamePromptSeeds(surahs) {
+  const ids = new Set(surahs.map((surah) => surah.id));
+  return surahs.flatMap((surah) => {
+    const seeds = [];
+    if (ids.has(surah.id - 1)) {
+      seeds.push({
+        key: `${surah.id}:previous`,
+        centerId: surah.id,
+        promptType: "previous",
+        correctId: surah.id - 1,
+      });
+    }
+    if (ids.has(surah.id + 1)) {
+      seeds.push({
+        key: `${surah.id}:next`,
+        centerId: surah.id,
+        promptType: "next",
+        correctId: surah.id + 1,
+      });
+    }
+    return seeds;
+  });
+}
+
+function getSurahGameCorpus(payload = state.payload, rangeStartId = state.surahGame.rangeStartId, rangeEndId = state.surahGame.rangeEndId) {
+  const { startId, endId } = sanitizeSurahGameRange(rangeStartId, rangeEndId);
+  const surahs = SURAH_PAGE_RANGES.filter((surah) => surah.id >= startId && surah.id <= endId);
+  const promptSeeds = getSurahGamePromptSeeds(surahs);
+  const startSurah = surahs[0] || null;
+  const endSurah = surahs[surahs.length - 1] || null;
+  return {
+    startId,
+    endId,
+    surahs,
+    ids: new Set(surahs.map((surah) => surah.id)),
+    promptSeeds,
+    playable: promptSeeds.length > 0,
+    startSurah,
+    endSurah,
+    signature: `${startId}:${endId}`,
+    label: getSurahGameRangeLabel(startSurah, endSurah, payload),
+  };
+}
+
+function getSurahChoiceIds(seed, corpus) {
+  const chosen = [];
+  const seen = new Set([seed.correctId, seed.centerId]);
+  const preferredOffsets = [-2, -1, 1, 2, -3, 3, -4, 4];
+  const pushCandidate = (candidateId) => {
+    if (candidateId >= 1 && candidateId <= SURAH_PAGE_RANGES.length && !seen.has(candidateId)) {
+      chosen.push(candidateId);
+      seen.add(candidateId);
+    }
+  };
+
+  preferredOffsets.forEach((offset) => {
+    const candidateId = seed.correctId + offset;
+    if (corpus.ids.has(candidateId)) {
+      pushCandidate(candidateId);
+    }
+  });
+
+  corpus.surahs.forEach((surah) => {
+    pushCandidate(surah.id);
+  });
+
+  preferredOffsets.forEach((offset) => {
+    pushCandidate(seed.correctId + offset);
+  });
+
+  SURAH_PAGE_RANGES.forEach((surah) => {
+    pushCandidate(surah.id);
+  });
+
+  return shuffleList(chosen.slice(0, 3));
+}
+
+function createSurahGameQuestion(corpus, previousQuestion = null) {
+  if (!corpus.playable) {
+    return null;
+  }
+
+  const availableSeeds =
+    previousQuestion && corpus.promptSeeds.length > 1
+      ? corpus.promptSeeds.filter((seed) => seed.key !== `${previousQuestion.centerId}:${previousQuestion.promptType}`)
+      : corpus.promptSeeds;
+  const pool = availableSeeds.length ? availableSeeds : corpus.promptSeeds;
+  const seed = pool[Math.floor(Math.random() * pool.length)];
+  const choiceIds = shuffleList([seed.correctId, ...getSurahChoiceIds(seed, corpus)]);
+
+  return {
+    centerId: seed.centerId,
+    promptType: seed.promptType,
+    correctId: seed.correctId,
+    choiceIds,
+    answeredId: null,
+    isCorrect: null,
+  };
+}
+
+function clearSurahGamePreviewTimer() {
+  if (surahGamePreviewTimer) {
+    window.clearTimeout(surahGamePreviewTimer);
+    surahGamePreviewTimer = null;
+  }
+}
+
+function buildDistinctShuffle(ids) {
+  if (ids.length < 2) {
+    return [...ids];
+  }
+
+  let shuffled = [...ids];
+  let attempts = 0;
+  while (attempts < 6 && shuffled.every((id, index) => id === ids[index])) {
+    shuffled = shuffleList([...ids]);
+    attempts += 1;
+  }
+  return shuffled;
+}
+
+function createSurahMemoryRound(corpus) {
+  if (corpus.surahs.length < SURAH_MEMORY_LENGTH) {
+    return null;
+  }
+
+  const maxStartIndex = Math.max(0, corpus.surahs.length - SURAH_MEMORY_LENGTH);
+  const startIndex = Math.floor(Math.random() * (maxStartIndex + 1));
+  const orderedIds = corpus.surahs.slice(startIndex, startIndex + SURAH_MEMORY_LENGTH).map((surah) => surah.id);
+
+  return {
+    orderedIds,
+    shuffledIds: buildDistinctShuffle(orderedIds),
+    selectedIds: [],
+    phase: "preview",
+    previewEndsAt: Date.now() + SURAH_MEMORY_PREVIEW_MS,
+    isCorrect: null,
+  };
+}
+
+function getSurahMemoryCountdown(round = state.surahGame.memoryRound) {
+  if (!round || round.phase !== "preview" || !round.previewEndsAt) {
+    return {
+      remainingMs: 0,
+      remainingSeconds: 0,
+      progressPercent: 0,
+    };
+  }
+
+  const remainingMs = Math.max(0, round.previewEndsAt - Date.now());
+  return {
+    remainingMs,
+    remainingSeconds: Math.ceil(remainingMs / 1000),
+    progressPercent: Math.max(0, Math.min(100, (remainingMs / SURAH_MEMORY_PREVIEW_MS) * 100)),
+  };
+}
+
+function revealSurahMemoryRound() {
+  if (!state.surahGame.memoryRound || state.surahGame.memoryRound.phase !== "preview") {
+    return;
+  }
+
+  clearSurahGamePreviewTimer();
+  state.surahGame.memoryRound = {
+    ...state.surahGame.memoryRound,
+    phase: "reorder",
+    previewEndsAt: null,
+    selectedIds: [],
+    shuffledIds: buildDistinctShuffle(state.surahGame.memoryRound.orderedIds),
+  };
+}
+
+function scheduleSurahGamePreview(payload = state.payload) {
+  clearSurahGamePreviewTimer();
+  if (state.surahGame.gameMode !== "memory") {
+    return;
+  }
+
+  const round = state.surahGame.memoryRound;
+  if (!round || round.phase !== "preview") {
+    return;
+  }
+
+  const countdown = getSurahMemoryCountdown(round);
+  if (countdown.remainingMs <= 0) {
+    revealSurahMemoryRound();
+    renderSurahGame(payload);
+    return;
+  }
+
+  surahGamePreviewTimer = window.setTimeout(() => {
+    if (state.surahGame.gameMode !== "memory" || state.surahGame.memoryRound?.phase !== "preview") {
+      return;
+    }
+    if (getSurahMemoryCountdown().remainingMs <= 0) {
+      revealSurahMemoryRound();
+    }
+    renderSurahGame(payload);
+  }, Math.min(250, countdown.remainingMs));
+}
+
+function updateSurahGameStats(isCorrect) {
+  const previousStreak = state.surahGame.streak;
+  const previousBestStreak = state.surahGame.bestStreak;
+  state.surahGame.answered += 1;
+  if (isCorrect) {
+    state.surahGame.correct += 1;
+    state.surahGame.streak += 1;
+    state.surahGame.bestStreak = Math.max(state.surahGame.bestStreak, state.surahGame.streak);
+  } else {
+    state.surahGame.streak = 0;
+  }
+
+  return {
+    isCorrect,
+    streak: state.surahGame.streak,
+    bestStreak: state.surahGame.bestStreak,
+    previousStreak,
+    previousBestStreak,
+  };
+}
+
+function getSurahMemoryRemainingIds(round = state.surahGame.memoryRound) {
+  if (!round) {
+    return [];
+  }
+  return round.shuffledIds.filter((id) => !round.selectedIds.includes(id));
+}
+
+function addSurahMemoryChoice(choiceId) {
+  const round = state.surahGame.memoryRound;
+  if (!round || round.phase !== "reorder" || round.selectedIds.includes(choiceId)) {
+    return null;
+  }
+
+  const selectedIds = [...round.selectedIds, Number(choiceId)];
+  let nextRound = {
+    ...round,
+    selectedIds,
+  };
+
+  let outcome = null;
+  if (selectedIds.length === round.orderedIds.length) {
+    const isCorrect = selectedIds.every((id, index) => id === round.orderedIds[index]);
+    nextRound = {
+      ...nextRound,
+      phase: "result",
+      isCorrect,
+    };
+    outcome = updateSurahGameStats(isCorrect);
+  }
+
+  state.surahGame.memoryRound = nextRound;
+  return outcome;
+}
+
+function removeSurahMemoryChoice(choiceId) {
+  const round = state.surahGame.memoryRound;
+  if (!round || round.phase === "preview") {
+    return;
+  }
+
+  state.surahGame.memoryRound = {
+    ...round,
+    phase: "reorder",
+    isCorrect: null,
+    selectedIds: round.selectedIds.filter((id) => id !== Number(choiceId)),
+  };
+}
+
+function clearSurahMemoryChoices() {
+  const round = state.surahGame.memoryRound;
+  if (!round || round.phase === "preview") {
+    return;
+  }
+
+  state.surahGame.memoryRound = {
+    ...round,
+    phase: "reorder",
+    isCorrect: null,
+    selectedIds: [],
+  };
+}
+
+function replaySurahMemoryRound() {
+  const round = state.surahGame.memoryRound;
+  if (!round) {
+    return;
+  }
+
+  clearSurahGamePreviewTimer();
+  state.surahGame.memoryRound = {
+    ...round,
+    phase: "preview",
+    previewEndsAt: Date.now() + SURAH_MEMORY_PREVIEW_MS,
+    selectedIds: [],
+    isCorrect: null,
+  };
+}
+
+function resetSurahGame(
+  payload = state.payload,
+  {
+    rangeStartId = state.surahGame.rangeStartId || 1,
+    rangeEndId = state.surahGame.rangeEndId || SURAH_PAGE_RANGES.length || 114,
+    gameMode = state.surahGame.gameMode || "quiz",
+    resetStats = true,
+    autoStart = false,
+  } = {},
+) {
+  clearSurahGamePreviewTimer();
+  const corpus = getSurahGameCorpus(payload, rangeStartId, rangeEndId);
+  state.surahGame.rangeStartId = corpus.startId;
+  state.surahGame.rangeEndId = corpus.endId;
+  state.surahGame.gameMode = gameMode;
+  state.surahGame.isStarted = autoStart;
+  state.surahGame.signature = corpus.signature;
+  if (resetStats) {
+    state.surahGame.answered = 0;
+    state.surahGame.correct = 0;
+    state.surahGame.streak = 0;
+    state.surahGame.bestStreak = 0;
+  }
+  state.surahGame.question = autoStart && gameMode === "quiz" ? createSurahGameQuestion(corpus) : null;
+  state.surahGame.memoryRound = autoStart && gameMode === "memory" ? createSurahMemoryRound(corpus) : null;
+  return corpus;
+}
+
+function startSurahGame(payload = state.payload) {
+  clearSurahGamePreviewTimer();
+  const corpus = getSurahGameCorpus(payload, state.surahGame.rangeStartId, state.surahGame.rangeEndId);
+  const canStart = state.surahGame.gameMode === "memory" ? corpus.surahs.length >= SURAH_MEMORY_LENGTH : corpus.playable;
+  state.surahGame.rangeStartId = corpus.startId;
+  state.surahGame.rangeEndId = corpus.endId;
+  state.surahGame.signature = corpus.signature;
+  state.surahGame.isStarted = canStart;
+  state.surahGame.question = canStart && state.surahGame.gameMode === "quiz" ? createSurahGameQuestion(corpus) : null;
+  state.surahGame.memoryRound = canStart && state.surahGame.gameMode === "memory" ? createSurahMemoryRound(corpus) : null;
+  return corpus;
+}
+
+function ensureSurahGameState(payload = state.payload) {
+  if (!state.surahGame.rangeStartId || !state.surahGame.rangeEndId) {
+    state.surahGame.rangeStartId = 1;
+    state.surahGame.rangeEndId = SURAH_PAGE_RANGES.length || 114;
+  }
+  if (!state.surahGame.gameMode) {
+    state.surahGame.gameMode = "quiz";
+  }
+
+  let corpus = getSurahGameCorpus(payload, state.surahGame.rangeStartId, state.surahGame.rangeEndId);
+  if (corpus.signature !== state.surahGame.signature) {
+    corpus = resetSurahGame(payload, {
+      rangeStartId: state.surahGame.rangeStartId,
+      rangeEndId: state.surahGame.rangeEndId,
+      gameMode: state.surahGame.gameMode,
+      resetStats: true,
+      autoStart: false,
+    });
+  } else if (state.surahGame.isStarted && state.surahGame.gameMode === "quiz" && !state.surahGame.question && corpus.playable) {
+    state.surahGame.question = createSurahGameQuestion(corpus);
+  } else if (
+    state.surahGame.isStarted &&
+    state.surahGame.gameMode === "memory" &&
+    !state.surahGame.memoryRound &&
+    corpus.surahs.length >= SURAH_MEMORY_LENGTH
+  ) {
+    state.surahGame.memoryRound = createSurahMemoryRound(corpus);
+  }
+
+  return corpus;
+}
+
+function answerSurahGameQuestion(choiceId) {
+  if (!state.surahGame.question || state.surahGame.question.answeredId !== null) {
+    return null;
+  }
+
+  const selectedId = Number(choiceId);
+  const isCorrect = selectedId === state.surahGame.question.correctId;
+  state.surahGame.question = {
+    ...state.surahGame.question,
+    answeredId: selectedId,
+    isCorrect,
+  };
+  return updateSurahGameStats(isCorrect);
+}
+
+function getSurahGameAccuracy(correct = state.surahGame.correct, answered = state.surahGame.answered) {
+  if (!answered) {
+    return 0;
+  }
+  return Math.round((correct / answered) * 100);
+}
+
+function getSurahHeatTier(streak = state.surahGame.streak) {
+  const tiers = [
+    { min: 0, key: "surahs.heatCalm", flames: 1, theme: "calm", next: 3 },
+    { min: 3, key: "surahs.heatWarm", flames: 2, theme: "warm", next: 5 },
+    { min: 5, key: "surahs.heatFire", flames: 3, theme: "fire", next: 8 },
+    { min: 8, key: "surahs.heatBlazing", flames: 4, theme: "blazing", next: 12 },
+    { min: 12, key: "surahs.heatLegend", flames: 5, theme: "legend", next: null },
+  ];
+
+  const tier = tiers.reduce((current, candidate) => (streak >= candidate.min ? candidate : current), tiers[0]);
+  const previousFloor = tier.min;
+  const nextFloor = tier.next;
+  const progress =
+    nextFloor === null ? 100 : Math.max(0, Math.min(100, ((streak - previousFloor) / Math.max(1, nextFloor - previousFloor)) * 100));
+
+  return {
+    ...tier,
+    progress,
+    remaining: nextFloor === null ? 0 : Math.max(0, nextFloor - streak),
+  };
+}
+
+function buildSurahFlamesMarkup(streak = state.surahGame.streak) {
+  const tier = getSurahHeatTier(streak);
+  const flames = "🔥".repeat(tier.flames);
+  return `<span class="surah-heat-flames" aria-hidden="true">${escapeHtml(flames)}</span>`;
+}
+
+function buildSurahIdentityMarkup(surah, { compact = false } = {}) {
+  if (!surah) {
+    return "";
+  }
+
+  return `
+    <div class="surah-identity ${compact ? "compact" : ""}">
+      <em>${escapeHtml(surah.arabic)}</em>
+      <strong>${escapeHtml(surah.simple)}</strong>
+    </div>
+  `;
+}
+
+function buildSurahFlamesClusterMarkup(streak = state.surahGame.streak) {
+  const tier = getSurahHeatTier(streak);
+  return `
+    <span class="surah-heat-flames" aria-hidden="true">
+      ${Array.from({ length: tier.flames }, (_, index) => {
+        const delay = `${(index * 0.12).toFixed(2)}s`;
+        return `
+          <span class="surah-flame" style="--flame-delay:${delay}">
+            <span class="surah-flame-core">🔥</span>
+            <span class="surah-flame-particle particle-a"></span>
+            <span class="surah-flame-particle particle-b"></span>
+            <span class="surah-flame-particle particle-c"></span>
+          </span>
+        `;
+      }).join("")}
+    </span>
+  `;
+}
+
+function buildSurahCoverageMarkup(corpus) {
+  if (!corpus.startSurah || !corpus.endSurah) {
+    return `<span class="helper">${escapeHtml(t("surahs.coverageEmpty"))}</span>`;
+  }
+
+  return `
+    <div class="surah-span-list">
+      <span class="surah-span-chip ${corpus.startId === 1 && corpus.endId === SURAH_PAGE_RANGES.length ? "all" : ""}">
+        ${escapeHtml(corpus.label)}
+      </span>
+      <span class="surah-span-chip more">
+        ${escapeHtml(t("surahs.pagesLabel", { start: corpus.startSurah.startPage, end: corpus.endSurah.endPage }))}
+      </span>
+    </div>
+  `;
+}
+
+function buildSurahSelectOptions(selectedId) {
+  return SURAH_PAGE_RANGES.map(
+    (surah) => `
+      <option value="${escapeHtml(surah.id)}" ${surah.id === selectedId ? "selected" : ""}>
+        ${escapeHtml(`${surah.id}. ${surah.simple}`)}
+      </option>
+    `,
+  ).join("");
+}
+
+function buildSurahSequenceMarkup(centerId) {
+  const center = getSurahById(centerId);
+  if (!center) {
+    return "";
+  }
+
+  return [center.id - 1, center.id, center.id + 1]
+    .map((surahId) => getSurahById(surahId))
+    .filter(Boolean)
+    .map(
+      (surah) => `
+        <article class="surah-sequence-card ${surah.id === center.id ? "current" : ""}">
+          ${buildSurahIdentityMarkup(surah, { compact: true })}
+        </article>
+      `,
+    )
+    .join("");
+}
+
+function buildSurahGameModeMarkup(payload = state.payload) {
+  const gameMode = state.surahGame.gameMode || "quiz";
+  return `
+    <section class="surah-mode-shell">
+      <div class="surah-mode-copy">
+        <span class="eyebrow">${escapeHtml(t("surahs.playModeLabel", {}, payload))}</span>
+      </div>
+      <div class="surah-mode-row">
+        <button
+          class="surah-mode-button ${gameMode === "quiz" ? "active" : ""}"
+          type="button"
+          data-surah-game-action="set-play-mode"
+          data-play-mode="quiz"
+        >
+          <strong>${escapeHtml(t("surahs.playModeQuiz", {}, payload))}</strong>
+          <span>${escapeHtml(t("surahs.playModeQuizHint", {}, payload))}</span>
+        </button>
+        <button
+          class="surah-mode-button ${gameMode === "memory" ? "active" : ""}"
+          type="button"
+          data-surah-game-action="set-play-mode"
+          data-play-mode="memory"
+        >
+          <strong>${escapeHtml(t("surahs.playModeMemory", {}, payload))}</strong>
+          <span>${escapeHtml(t("surahs.playModeMemoryHint", {}, payload))}</span>
+        </button>
+      </div>
+    </section>
+  `;
+}
+
+function buildSurahMemorySequenceMarkup(ids, { removable = false, reveal = false } = {}) {
+  return ids
+    .map((surahId, index) => {
+      const surah = getSurahById(surahId);
+      if (!surah) {
+        return "";
+      }
+      return `
+        <button
+          class="surah-memory-chip ${reveal ? "reveal" : ""}"
+          type="button"
+          ${removable ? `data-surah-game-action="memory-remove" data-choice-id="${escapeHtml(surahId)}"` : "disabled"}
+        >
+          <span class="surah-memory-index">${escapeHtml(index + 1)}</span>
+          ${buildSurahIdentityMarkup(surah, { compact: true })}
+        </button>
+      `;
+    })
+    .join("");
+}
+
+function buildSurahMemoryPoolMarkup(ids) {
+  return ids
+    .map((surahId) => {
+      const surah = getSurahById(surahId);
+      if (!surah) {
+        return "";
+      }
+      return `
+        <button
+          class="surah-choice-button surah-memory-choice"
+          type="button"
+          data-surah-game-action="memory-pick"
+          data-choice-id="${escapeHtml(surahId)}"
+        >
+          ${buildSurahIdentityMarkup(surah, { compact: true })}
+        </button>
+      `;
+    })
+    .join("");
+}
+
+function buildSurahMemoryMarkup(payload, corpus, heatTier) {
+  const round = state.surahGame.memoryRound;
+  if (corpus.surahs.length < SURAH_MEMORY_LENGTH) {
+    return `
+      <section class="surah-empty-state">
+        <h3>${escapeHtml(t("surahs.emptyMemoryTitle", {}, payload))}</h3>
+        <p class="muted">${escapeHtml(t("surahs.emptyMemoryHelp", {}, payload))}</p>
+      </section>
+    `;
+  }
+
+  if (!round) {
+    return `
+      <section class="surah-empty-state">
+        <h3>${escapeHtml(t("surahs.emptyAllTitle", {}, payload))}</h3>
+        <p class="muted">${escapeHtml(t("surahs.emptyAllHelp", {}, payload))}</p>
+      </section>
+    `;
+  }
+
+  const countdown = getSurahMemoryCountdown(round);
+  const canEditSelection = round.phase === "reorder";
+  const selectedMarkup = buildSurahMemorySequenceMarkup(round.selectedIds, { removable: canEditSelection });
+  const remainingMarkup = buildSurahMemoryPoolMarkup(getSurahMemoryRemainingIds(round));
+  const revealMarkup = buildSurahMemorySequenceMarkup(round.orderedIds, { reveal: true });
+
+  if (round.phase === "preview") {
+    return `
+      <section class="surah-memory-shell">
+        <article class="surah-memory-preview-card">
+          <div class="surah-memory-preview-head">
+            <div>
+              <span class="eyebrow">${escapeHtml(t("surahs.memoryPreviewTitle", {}, payload))}</span>
+              <h3>${escapeHtml(t("surahs.memoryPreviewHelp", {}, payload))}</h3>
+            </div>
+            <div class="surah-memory-countdown">
+              <span>${escapeHtml(t("surahs.memoryCountdownLabel", {}, payload))}</span>
+              <strong>${escapeHtml(t("surahs.memoryCountdownValue", { count: countdown.remainingSeconds }, payload))}</strong>
+            </div>
+          </div>
+          <div class="surah-heat-track surah-memory-track" aria-hidden="true">
+            <span style="width:${escapeHtml(countdown.progressPercent)}%"></span>
+          </div>
+          <div class="surah-memory-grid">
+            ${revealMarkup}
+          </div>
+          <div class="surah-memory-actions">
+            <button class="secondary-button" type="button" data-surah-game-action="memory-skip-preview">
+              ${escapeHtml(t("surahs.memoryPreviewSkip", {}, payload))}
+            </button>
+          </div>
+        </article>
+      </section>
+    `;
+  }
+
+  return `
+    <section class="surah-memory-shell">
+      <article class="surah-question-panel surah-memory-panel ${round.phase === "result" && !round.isCorrect ? "is-wrong-result" : ""}">
+        <div class="surah-question-copy">
+          <span class="eyebrow">${escapeHtml(t("surahs.memoryReorderTitle", {}, payload))}</span>
+          <h3>${escapeHtml(t("surahs.memoryReorderHelp", {}, payload))}</h3>
+        </div>
+        <div class="surah-memory-progress-row">
+          <div class="surah-feedback-heat">
+            ${buildSurahFlamesClusterMarkup(state.surahGame.streak)}
+            <strong>${escapeHtml(t(heatTier.key, {}, payload))}</strong>
+            <span>${escapeHtml(t("surahs.memoryAnswerProgress", { count: round.selectedIds.length }, payload))}</span>
+          </div>
+          <div class="surah-memory-actions">
+            <button class="secondary-button" type="button" data-surah-game-action="memory-clear">
+              ${escapeHtml(t("surahs.memoryClear", {}, payload))}
+            </button>
+            <button class="secondary-button" type="button" data-surah-game-action="memory-replay">
+              ${escapeHtml(t("surahs.memoryReplay", {}, payload))}
+            </button>
+          </div>
+        </div>
+        <div class="surah-memory-columns">
+          <div class="surah-memory-stack">
+            <span class="eyebrow">${escapeHtml(t("surahs.memorySelectedLabel", {}, payload))}</span>
+            <div class="surah-memory-grid selected ${round.phase === "result" ? "result" : ""} ${round.phase === "result" && !round.isCorrect ? "wrong" : ""}">
+              ${
+                round.selectedIds.length
+                  ? selectedMarkup
+                  : `<span class="helper">${escapeHtml(t("surahs.memoryAnswerProgress", { count: 0 }, payload))}</span>`
+              }
+            </div>
+          </div>
+          <div class="surah-memory-stack">
+            <span class="eyebrow">${escapeHtml(t("surahs.memoryRemainingLabel", {}, payload))}</span>
+            <div class="surah-memory-grid">
+              ${remainingMarkup || `<span class="helper">${escapeHtml(t("surahs.memoryRemainingDone", {}, payload))}</span>`}
+            </div>
+          </div>
+        </div>
+        ${
+          round.phase === "result"
+            ? `
+              <div class="surah-feedback ${round.isCorrect ? "correct" : "wrong"}">
+                <p>${escapeHtml(t(round.isCorrect ? "surahs.memoryCorrect" : "surahs.memoryWrong", {}, payload))}</p>
+                <div class="surah-sequence-block">
+                  <span class="eyebrow">${escapeHtml(t("surahs.sequenceLabel", {}, payload))}</span>
+                  <div class="surah-memory-grid reveal">
+                    ${revealMarkup}
+                  </div>
+                </div>
+                <button class="primary-button" type="button" data-surah-game-action="memory-next">
+                  ${escapeHtml(t("surahs.memoryNewRound", {}, payload))}
+                </button>
+              </div>
+            `
+            : ""
+        }
+      </article>
+    </section>
+  `;
 }
 
 function getProgramZones(plan) {
@@ -952,10 +3399,14 @@ function getPageProgramZones(plan, page) {
 function renderProgramLegend(plan) {
   const markup = getProgramZones(plan)
     .map((zone) => {
+      const surahSummary = buildRangeSurahSummaryText(zone.range);
       return `
         <article class="program-legend-chip ${zone.key} ${zone.range ? "" : "disabled"}">
           <span class="program-tag ${zone.key}">${escapeHtml(zone.label)}</span>
-          <p class="program-definition">${escapeHtml(zone.definition)}</p>
+          <div class="program-definition-stack">
+            <p class="program-definition">${escapeHtml(zone.definition)}</p>
+            ${surahSummary ? `<p class="program-surah-line">${escapeHtml(surahSummary)}</p>` : ""}
+          </div>
         </article>
       `;
     })
@@ -991,6 +3442,9 @@ function buildPageGridStateLabel(entry, effectiveLearned) {
 
 function renderPageQuickActions(payload) {
   const container = $("#page-quick-actions");
+  if (!container) {
+    return;
+  }
   const totalPages = payload.errorTracking.totalPages;
 
   if (!Number.isInteger(state.activePage) || state.activePage < 1 || state.activePage > totalPages) {
@@ -1008,11 +3462,11 @@ function renderPageQuickActions(payload) {
   const page = state.activePage;
   const entry = normalizePageEntry((payload.pageErrors || {})[String(page)]);
   const programZones = getPageProgramZones(payload.plan || {}, page);
+  const pageSurahs = getSurahsForPage(page);
   const primaryZone = getPrimaryProgramZoneInfo(programZones);
-  const effectiveLearned = entry.learned || isLearnedFromProgram(programZones);
+  const effectiveLearned = isLearnedFromProgram(payload, page);
   const stateLabel = buildPageStateLabel(entry, effectiveLearned);
   const latestNoteEvent = entry.latestNoteEvent;
-  const noteDraft = getQuickNoteDraft(page);
   const programTags = programZones
     .map((zone) => `<span class="program-tag ${escapeHtml(zone.key)}">${escapeHtml(zone.shortLabel)}</span>`)
     .join("");
@@ -1023,6 +3477,16 @@ function renderPageQuickActions(payload) {
       <span class="count-pill grave ${entry.errors.grave > 0 ? "filled" : ""}">${escapeHtml(t("count.grave"))} ${escapeHtml(entry.errors.grave)}</span>
     </div>
   `;
+  const surahTags = pageSurahs
+    .map(
+      (surah) => `
+        <span class="surah-chip ${surah.startPage === page ? "start" : ""}">
+          <span>${escapeHtml(surah.simple)}</span>
+          <strong>${escapeHtml(surah.arabic)}</strong>
+        </span>
+      `,
+    )
+    .join("");
   const historyMarkup = entry.events.length
     ? entry.events
         .slice(0, 5)
@@ -1032,6 +3496,16 @@ function renderPageQuickActions(payload) {
               <div class="quick-history-row">
                 <span class="quick-history-severity ${escapeHtml(event.severity)}">${escapeHtml(severityLabel(event.severity))}</span>
                 <span class="quick-history-date">${escapeHtml(formatEventTimestamp(event.createdAt, payload))}</span>
+              </div>
+              <div class="quick-history-meta">
+                <span class="program-tag subtle">${escapeHtml(errorScopeLabel(event.scope, payload))}</span>
+                ${
+                  event.rect
+                    ? `<span class="quick-history-due">${escapeHtml(t("quick.reviewDueLabel", {}, payload))}: ${escapeHtml(
+                        formatReviewTimestamp(event.review?.dueAt, payload) || formatEventTimestamp(event.createdAt, payload),
+                      )}</span>`
+                    : ""
+                }
               </div>
               <p class="helper">${escapeHtml(event.note || t("quick.historyNoNote", {}, payload))}</p>
             </article>
@@ -1076,32 +3550,19 @@ function renderPageQuickActions(payload) {
         ${countsMarkup}
       </div>
       <div class="quick-detail-block">
+        <span class="eyebrow">${escapeHtml(t("quick.surahLabel", {}, payload))}</span>
+        ${surahTags ? `<div class="quick-program-tags surah-tags">${surahTags}</div>` : `<p class="helper">${escapeHtml(t("quick.surahEmpty", {}, payload))}</p>`}
+      </div>
+      <div class="quick-detail-block">
         <span class="eyebrow">${escapeHtml(t("quick.zoneLabel", {}, payload))}</span>
         ${programTags ? `<div class="quick-program-tags">${programTags}</div>` : `<p class="helper">${escapeHtml(t("quick.zoneEmpty", {}, payload))}</p>`}
       </div>
-      <label class="quick-note-field">
-        <span class="eyebrow">${escapeHtml(t("quick.noteLabel", {}, payload))}</span>
-        <textarea class="quick-note-input" rows="4" maxlength="280" data-page-note-input="${escapeHtml(page)}" placeholder="${escapeHtml(
-          t("quick.notePlaceholder", {}, payload),
-        )}">${escapeHtml(noteDraft)}</textarea>
-        <span class="helper">${escapeHtml(t("quick.noteHelp", {}, payload))}</span>
-      </label>
-      <div class="quick-action-buttons">
-        <button class="quick-action-button minor" type="button" data-page-quick-action="minor" data-page="${escapeHtml(page)}">
-          <span>${escapeHtml(t("quick.minor", {}, payload))}</span>
-          <small>${escapeHtml(t("quick.minorHelp", {}, payload))}</small>
+      <div class="quick-action-row">
+        <button class="primary-button" type="button" data-open-page-editor="${escapeHtml(page)}">
+          ${escapeHtml(t("quick.openEditor", {}, payload))}
         </button>
-        <button class="quick-action-button medium" type="button" data-page-quick-action="medium" data-page="${escapeHtml(page)}">
-          <span>${escapeHtml(t("quick.medium", {}, payload))}</span>
-          <small>${escapeHtml(t("quick.mediumHelp", {}, payload))}</small>
-        </button>
-        <button class="quick-action-button grave" type="button" data-page-quick-action="grave" data-page="${escapeHtml(page)}">
-          <span>${escapeHtml(t("quick.grave", {}, payload))}</span>
-          <small>${escapeHtml(t("quick.graveHelp", {}, payload))}</small>
-        </button>
-        <button class="quick-action-button clear" type="button" data-page-quick-clear="${escapeHtml(page)}">
-          <span>${escapeHtml(t("quick.clear", {}, payload))}</span>
-          <small>${escapeHtml(t("quick.clearHelp", {}, payload))}</small>
+        <button class="secondary-button danger-button" type="button" data-page-quick-clear="${escapeHtml(page)}">
+          ${escapeHtml(t("quick.clear", {}, payload))}
         </button>
       </div>
       <div class="quick-history-block">
@@ -1112,26 +3573,495 @@ function renderPageQuickActions(payload) {
   `;
 }
 
+function renderPageEditorModal(payload = state.payload) {
+  const container = $("#page-editor-modal");
+  if (!container) {
+    return;
+  }
+
+  if (!state.pageEditor.open || !Number.isInteger(state.pageEditor.page)) {
+    container.hidden = true;
+    container.innerHTML = "";
+    return;
+  }
+
+  const page = state.pageEditor.page;
+  const entry = normalizePageEntry((payload.pageErrors || {})[String(page)]);
+  const detailedEvents = entry.events.filter((event) => event.rect || event.scope === "next-page-link");
+  const placedEvents = detailedEvents.filter((event) => event.rect);
+  const hasNextPageLink = detailedEvents.some((event) => event.scope === "next-page-link");
+  const isNextPageLinkScope = state.pageEditor.scope === "next-page-link";
+  const selectedRect = isNextPageLinkScope ? null : state.pageEditor.rect;
+  const selectionStateKey = isNextPageLinkScope
+    ? hasNextPageLink
+      ? "editor.selectionAutoLinkUsed"
+      : "editor.selectionAutoLink"
+    : selectedRect
+      ? "editor.selectionReady"
+      : "editor.selectionEmpty";
+  const canSave = isNextPageLinkScope ? !hasNextPageLink : Boolean(selectedRect);
+
+  container.hidden = false;
+  container.innerHTML = `
+    <div class="page-editor-backdrop" data-page-editor-close="true"></div>
+    <div class="page-editor-shell" role="dialog" aria-modal="true" aria-label="${escapeHtml(t("editor.title", {}, payload))}">
+      <div class="page-editor-head">
+        <div>
+          <p class="eyebrow">${escapeHtml(t("editor.eyebrow", {}, payload))}</p>
+          <h2>${escapeHtml(t("quick.pageTitle", { page }, payload))}</h2>
+          <p class="helper">${escapeHtml(t("editor.help", {}, payload))}</p>
+        </div>
+        <button class="secondary-button" type="button" data-page-editor-close="true">${escapeHtml(t("editor.cancel", {}, payload))}</button>
+      </div>
+      <div class="page-editor-layout">
+        <section class="page-editor-stage-panel">
+          <div class="page-editor-image-frame">
+            ${buildMushafPageMarkup(page)}
+            <div class="page-editor-stage ${isNextPageLinkScope ? "selection-disabled" : ""}" data-page-editor-stage="true">
+              ${placedEvents
+                .map(
+                  (event, index) => `
+                    <button
+                      class="page-editor-existing-mark ${escapeHtml(event.scope)}"
+                      type="button"
+                      data-selection-index="${escapeHtml(index)}"
+                      style="${selectionRectStyle(event.rect)}"
+                      title="${escapeHtml(errorScopeLabel(event.scope, payload))}"
+                    ></button>
+                  `,
+                )
+                .join("")}
+              <div
+                class="page-editor-selection ${selectedRect ? "active" : ""}"
+                id="page-editor-selection-box"
+                style="${selectionRectStyle(selectedRect)}"
+              ></div>
+            </div>
+          </div>
+          <p class="helper">${escapeHtml(t(selectionStateKey, {}, payload))}</p>
+        </section>
+        <aside class="page-editor-side">
+          <div class="page-editor-scope-group">
+            <span class="eyebrow">${escapeHtml(t("editor.scopeLabel", {}, payload))}</span>
+            <div class="page-editor-scope-row">
+              ${["harakah", "word", "line", "next-page-link"]
+                .map(
+                  (scope) => `
+                    <button
+                      class="page-editor-scope-button ${state.pageEditor.scope === scope ? "active" : ""}"
+                      type="button"
+                      data-page-editor-scope="${escapeHtml(scope)}"
+                    >
+                      ${escapeHtml(errorScopeLabel(scope, payload))}
+                    </button>
+                  `,
+                )
+                .join("")}
+            </div>
+          </div>
+          <label class="quick-note-field">
+            <span class="eyebrow">${escapeHtml(t("editor.noteLabel", {}, payload))}</span>
+            <textarea
+              class="quick-note-input"
+              rows="4"
+              maxlength="280"
+              data-page-editor-note="true"
+              placeholder="${escapeHtml(t("editor.notePlaceholder", {}, payload))}"
+            >${escapeHtml(state.pageEditor.note || "")}</textarea>
+          </label>
+          <div class="page-editor-action-row">
+            <button class="secondary-button" type="button" data-page-editor-clear="true">${escapeHtml(t("editor.clearSelection", {}, payload))}</button>
+            <button class="primary-button" type="button" data-page-editor-save="true" ${canSave ? "" : "disabled"}>
+              ${escapeHtml(t("editor.save", {}, payload))}
+            </button>
+          </div>
+          <div class="quick-history-block">
+            <span class="eyebrow">${escapeHtml(t("editor.recentLabel", {}, payload))}</span>
+            <div class="quick-history-list">
+              ${
+                detailedEvents.length
+                  ? detailedEvents
+                      .slice(0, 6)
+                      .map(
+                        (event) => `
+                          <article class="quick-history-item ${escapeHtml(event.severity)}">
+                            <div class="quick-history-row">
+                              <span class="quick-history-severity ${escapeHtml(event.severity)}">${escapeHtml(errorScopeLabel(event.scope, payload))}</span>
+                              <span class="quick-history-date">${escapeHtml(
+                                formatReviewTimestamp(event.review?.dueAt, payload) || formatEventTimestamp(event.createdAt, payload),
+                              )}</span>
+                            </div>
+                            <p class="helper">${escapeHtml(event.note || t("quick.historyNoNote", {}, payload))}</p>
+                            <div class="quick-history-actions">
+                              <button
+                                class="secondary-button danger-button quick-history-delete"
+                                type="button"
+                                data-page-editor-delete-error="${escapeHtml(event.id)}"
+                                data-page-editor-delete-page="${escapeHtml(page)}"
+                              >
+                                ${escapeHtml(t("editor.deleteError", {}, payload))}
+                              </button>
+                            </div>
+                          </article>
+                        `,
+                      )
+                      .join("")
+                  : `<div class="quick-empty-state">${escapeHtml(t("editor.recentEmpty", {}, payload))}</div>`
+              }
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  `;
+
+  const frame = container.querySelector(".page-editor-image-frame");
+  if (frame) {
+    placedEvents.forEach((event, index) => {
+      const mark = frame.querySelector(`[data-selection-index="${index}"]`);
+      applySelectionRectToElement(frame, mark, event);
+    });
+    applySelectionRectToElement(frame, container.querySelector("#page-editor-selection-box"), {
+      rect: state.pageEditor.rect,
+      anchor: state.pageEditor.anchor,
+    });
+  }
+}
+
+function renderErrorReview(payload = state.payload) {
+  const container = $("#error-review");
+  if (!container) {
+    return;
+  }
+
+  resetReviewSwipeState();
+
+  const review = payload.errorReview || { dueItems: [], upcomingItems: [], summary: {} };
+  const dueItems = Array.isArray(review.dueItems) ? review.dueItems.map((item) => normalizeErrorReviewItem(item)).filter(Boolean) : [];
+  const upcomingItems = Array.isArray(review.upcomingItems)
+    ? review.upcomingItems.map((item) => normalizeErrorReviewItem(item)).filter(Boolean)
+    : [];
+  const allItems = buildAllErrorReviewItems(payload);
+  const duePageGroups = buildReviewPageGroups(dueItems);
+  const dueItemIds = new Set(dueItems.map((item) => item.id));
+  const reviewPageGroups = buildReviewPageGroups(allItems)
+    .map((group) => {
+      const dueCount = group.items.filter((item) => dueItemIds.has(item.id)).length;
+      const masteredCount = group.items.filter((item) => isReviewItemMastered(item)).length;
+      const nextDueAt =
+        group.items.reduce((earliest, item) => {
+          const timestamp = Date.parse(item.review?.dueAt || item.createdAt || "") || Number.POSITIVE_INFINITY;
+          return Math.min(earliest, timestamp);
+        }, Number.POSITIVE_INFINITY) || Number.POSITIVE_INFINITY;
+      const status = dueCount ? "due" : masteredCount === group.items.length ? "mastered" : "upcoming";
+      return {
+        ...group,
+        dueCount,
+        masteredCount,
+        nextDueAt,
+        status,
+      };
+    })
+    .sort((left, right) => {
+      const statusRank = { due: 0, upcoming: 1, mastered: 2 };
+      const leftRank = statusRank[left.status] ?? 9;
+      const rightRank = statusRank[right.status] ?? 9;
+      if (leftRank !== rightRank) {
+        return leftRank - rightRank;
+      }
+      if (left.nextDueAt !== right.nextDueAt) {
+        return left.nextDueAt - right.nextDueAt;
+      }
+      return left.page - right.page;
+    });
+  const activeDueGroup = duePageGroups[0] || null;
+  const hasItems = reviewPageGroups.length > 0;
+
+  if (!hasItems) {
+    setReviewRevealedItemIds([]);
+    setReviewSelectedPage(null);
+    pruneReviewCompletedItems(null);
+    container.innerHTML = `
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">${escapeHtml(t("review.eyebrow", {}, payload))}</p>
+          <h2>${escapeHtml(t("review.title", {}, payload))}</h2>
+        </div>
+        <p class="muted">${escapeHtml(t("review.help", {}, payload))}</p>
+      </div>
+      <section class="surah-empty-state">
+        <h3>${escapeHtml(t("review.emptyTitle", {}, payload))}</h3>
+        <p class="muted">${escapeHtml(t("review.emptyHelp", {}, payload))}</p>
+      </section>
+    `;
+    return;
+  }
+
+  let selectedPage = getReviewSelectedPage();
+  if (selectedPage && !reviewPageGroups.some((group) => group.page === selectedPage)) {
+    setReviewSelectedPage(null);
+    selectedPage = null;
+  }
+
+  const selectedGroup = reviewPageGroups.find((group) => group.page === selectedPage) || null;
+  const activeGroup = selectedGroup || activeDueGroup || reviewPageGroups[0] || null;
+  const activeDueGroupForPage = activeGroup ? duePageGroups.find((group) => group.page === activeGroup.page) || null : null;
+  const hasDueFlow = Boolean(activeDueGroupForPage);
+
+  let currentGroup = activeGroup;
+  let completedItemIds = new Set();
+  let revealedItemIds = [];
+  let revealedItems = [];
+  let nextHiddenItem = null;
+  let currentAnswerItem = null;
+
+  if (hasDueFlow) {
+    pruneReviewCompletedItems(activeDueGroupForPage.page);
+    const completedItems = getReviewCompletedItemsForPage(activeDueGroupForPage.page).filter(
+      (completedItem) => !activeDueGroupForPage.items.some((item) => item.id === completedItem.id),
+    );
+    currentGroup = {
+      ...activeGroup,
+      items: [...activeDueGroupForPage.items, ...completedItems].sort(compareReviewItemsOnPage),
+      completedItems,
+    };
+    completedItemIds = new Set(completedItems.map((item) => item.id));
+    const groupItemIds = new Set(currentGroup.items.map((item) => item.id));
+    revealedItemIds = [
+      ...new Set([
+        ...getReviewRevealedItemIds().filter((itemId) => groupItemIds.has(itemId)),
+        ...completedItems.map((item) => item.id),
+      ]),
+    ];
+    setReviewRevealedItemIds(revealedItemIds);
+    revealedItems = currentGroup.items.filter((item) => revealedItemIds.includes(item.id));
+    const revealedDueItems = activeDueGroupForPage.items.filter((item) => revealedItemIds.includes(item.id));
+    nextHiddenItem = activeDueGroupForPage.items.find((item) => !revealedItemIds.includes(item.id)) || null;
+    currentAnswerItem = revealedDueItems[revealedDueItems.length - 1] || null;
+  } else {
+    revealedItemIds = currentGroup.items.map((item) => item.id);
+    revealedItems = currentGroup.items;
+  }
+
+  const canAnswerCurrentItem = Boolean(currentAnswerItem);
+  const canSwipeCurrentPage = !nextHiddenItem && Boolean(currentAnswerItem);
+  const dragOffset =
+    canSwipeCurrentPage && state.reviewSwipe.itemId === currentAnswerItem.id ? state.reviewSwipe.currentX - state.reviewSwipe.startX : 0;
+  const currentIndex = hasDueFlow ? Math.max(1, duePageGroups.findIndex((group) => group.page === currentGroup.page) + 1) : 0;
+  const total = duePageGroups.length;
+  const noteText = currentAnswerItem?.note || t("review.noteEmpty", {}, payload);
+  const revealButtonLabel = nextHiddenItem ? t("review.revealButton", {}, payload) : t("review.revealDoneButton", {}, payload);
+  const revealHelpText = nextHiddenItem ? t("review.revealNextHelp", {}, payload) : t("review.revealDoneHelp", {}, payload);
+  const activeStatusLabel = t(`review.status.${currentGroup.status}`, {}, payload);
+  const hasReturnToQueue = Boolean(selectedGroup && activeDueGroup);
+  const nextPagePreviewItem = hasDueFlow
+    ? currentAnswerItem?.scope === "next-page-link"
+      ? currentAnswerItem
+      : null
+    : currentGroup.items.find((item) => item.scope === "next-page-link") || null;
+  const browseListMarkup = currentGroup.items
+    .map(
+      (item) => `
+        <article class="review-item-card ${escapeHtml(item.severity)}">
+          <div class="quick-history-row">
+            <span class="quick-history-severity ${escapeHtml(item.severity)}">${escapeHtml(errorScopeLabel(item.scope, payload))}</span>
+            <span class="quick-history-date">${escapeHtml(
+              formatReviewTimestamp(item.review?.dueAt, payload) || formatEventTimestamp(item.createdAt, payload),
+            )}</span>
+          </div>
+          <p class="helper">${escapeHtml(item.note || t("review.noteEmpty", {}, payload))}</p>
+        </article>
+      `,
+    )
+    .join("");
+  const sideActionsMarkup = hasDueFlow
+    ? `
+        <aside class="review-side-actions">
+          <button
+            class="secondary-button review-side-button"
+            type="button"
+            data-review-reveal-next="${escapeHtml(nextHiddenItem?.id || "")}"
+            ${nextHiddenItem ? "" : "disabled"}
+          >
+            ${escapeHtml(revealButtonLabel)}
+          </button>
+          <button
+            class="secondary-button danger-button review-side-button"
+            type="button"
+            data-review-answer="failure"
+            data-review-id="${escapeHtml(currentAnswerItem?.id || "")}"
+            ${canAnswerCurrentItem ? "" : "disabled"}
+          >
+            ${escapeHtml(t("review.failureButton", {}, payload))}
+          </button>
+          <button
+            class="primary-button review-side-button"
+            type="button"
+            data-review-answer="success"
+            data-review-id="${escapeHtml(currentAnswerItem?.id || "")}"
+            ${canAnswerCurrentItem ? "" : "disabled"}
+          >
+            ${escapeHtml(t("review.successButton", {}, payload))}
+          </button>
+        </aside>
+      `
+    : hasReturnToQueue
+      ? `
+        <aside class="review-side-actions">
+          <button class="secondary-button review-side-button" type="button" data-review-return-queue="true">
+            ${escapeHtml(t("review.returnToQueue", {}, payload))}
+          </button>
+        </aside>
+      `
+      : "";
+  const noteBlockMarkup = hasDueFlow
+    ? `
+        <div class="review-note-block">
+          <span class="eyebrow">${escapeHtml(t("review.noteLabel", {}, payload))}</span>
+          <p class="helper">${escapeHtml(noteText)}</p>
+          <p class="helper">${escapeHtml(
+            canAnswerCurrentItem ? (canSwipeCurrentPage ? t("review.swipeHelp", {}, payload) : t("review.answerCurrentHelp", {}, payload)) : revealHelpText,
+          )}</p>
+        </div>
+      `
+    : `
+        <div class="review-note-block review-browse-block">
+          <span class="eyebrow">${escapeHtml(t("review.browseListLabel", {}, payload))}</span>
+          <p class="helper">${escapeHtml(t("review.browseHelp", {}, payload))}</p>
+          <div class="review-item-list">${browseListMarkup}</div>
+        </div>
+      `;
+
+  container.innerHTML = `
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">${escapeHtml(t("review.eyebrow", {}, payload))}</p>
+        <h2>${escapeHtml(t("review.title", {}, payload))}</h2>
+      </div>
+      <p class="muted">${escapeHtml(t("review.help", {}, payload))}</p>
+    </div>
+
+    <section class="review-stat-grid">
+      <article class="surah-stat-card">
+        <span>${escapeHtml(t("review.dueNow", {}, payload))}</span>
+        <strong>${escapeHtml(review.summary.dueCount || 0)}</strong>
+      </article>
+      <article class="surah-stat-card">
+        <span>${escapeHtml(t("review.upcoming", {}, payload))}</span>
+        <strong>${escapeHtml(review.summary.upcomingCount || 0)}</strong>
+      </article>
+      <article class="surah-stat-card">
+        <span>${escapeHtml(t("review.mastered", {}, payload))}</span>
+        <strong>${escapeHtml(review.summary.masteredCount || 0)}</strong>
+      </article>
+    </section>
+
+    <section class="review-library-shell">
+      <div class="review-library-head">
+        <div>
+          <p class="eyebrow">${escapeHtml(t("review.libraryLabel", {}, payload))}</p>
+          <h3>${escapeHtml(t("review.libraryTitle", {}, payload))}</h3>
+        </div>
+        ${hasReturnToQueue ? `<button class="secondary-button" type="button" data-review-return-queue="true">${escapeHtml(t("review.returnToQueue", {}, payload))}</button>` : ""}
+      </div>
+      <p class="helper">${escapeHtml(t("review.libraryHelp", {}, payload))}</p>
+      <div class="review-page-browser">
+        ${reviewPageGroups
+          .map(
+            (group) => `
+              <button
+                class="review-page-chip ${escapeHtml(group.status)} ${group.page === currentGroup.page ? "active" : ""}"
+                type="button"
+                data-review-select-page="${escapeHtml(group.page)}"
+              >
+                <div class="review-page-chip-head">
+                  <strong>${escapeHtml(t("review.pageLabel", { page: group.page }, payload))}</strong>
+                  <span class="review-page-chip-count">${escapeHtml(group.items.length)}</span>
+                </div>
+                <span class="review-page-chip-meta">${escapeHtml(t("review.pageErrorCount", { count: group.items.length }, payload))}</span>
+                <span class="review-page-chip-status ${escapeHtml(group.status)}">${escapeHtml(
+                  group.dueCount ? `${t("review.status.due", {}, payload)} · ${group.dueCount}` : t(`review.status.${group.status}`, {}, payload),
+                )}</span>
+              </button>
+            `,
+          )
+          .join("")}
+      </div>
+    </section>
+
+    <section class="review-card-shell">
+      <div class="review-card-meta">
+        <span class="eyebrow">${escapeHtml(
+          hasDueFlow ? t("review.cardLabel", { current: currentIndex, total }, payload) : t("review.selectedLabel", {}, payload),
+        )}</span>
+        <div class="quick-program-tags">
+          <span class="program-tag subtle">${escapeHtml(t("review.pageLabel", { page: currentGroup.page }, payload))}</span>
+          <span class="program-tag subtle">${escapeHtml(t("review.pageErrorCount", { count: currentGroup.items.length }, payload))}</span>
+          <span class="program-tag subtle">${escapeHtml(activeStatusLabel)}</span>
+          <span class="program-tag subtle">${escapeHtml(t("review.revealProgress", { count: revealedItems.length, total: currentGroup.items.length }, payload))}</span>
+        </div>
+      </div>
+      <div class="review-card-body ${sideActionsMarkup ? "with-side-actions" : ""}">
+        <div
+          class="review-card-stage ${canSwipeCurrentPage ? "" : "swipe-locked"}"
+          data-review-card="${escapeHtml(canSwipeCurrentPage ? currentAnswerItem?.id || "" : "")}"
+          style="--review-drag:${escapeHtml(dragOffset)}px;"
+        >
+          <div class="review-swipe-hint success">${escapeHtml(t("review.successButton", {}, payload))}</div>
+          <div class="review-swipe-hint failure">${escapeHtml(t("review.failureButton", {}, payload))}</div>
+          <div class="review-card-page-frame">
+            ${buildMushafPageMarkup(currentGroup.page)}
+            ${currentGroup.items
+              .map((item, index) => {
+                const isRevealed = revealedItemIds.includes(item.id);
+                const isCompleted = completedItemIds.has(item.id);
+                return isRevealed
+                  ? `<div class="review-card-reveal-ring ${currentAnswerItem?.id === item.id ? "active" : ""} ${isCompleted ? "completed" : ""}" data-review-selection="${escapeHtml(index)}"></div>`
+                  : `
+                    <div class="review-card-mask ${escapeHtml(item.scope)}" data-review-selection="${escapeHtml(index)}"></div>
+                  `;
+              })
+              .join("")}
+          </div>
+          ${nextPagePreviewItem ? buildMushafNextPagePreviewMarkup(currentGroup.page, payload) : ""}
+        </div>
+        ${sideActionsMarkup}
+      </div>
+      ${noteBlockMarkup}
+    </section>
+  `;
+
+  const frame = container.querySelector(".review-card-page-frame");
+  if (frame) {
+    currentGroup.items.forEach((item, index) => {
+      const target = frame.querySelector(`[data-review-selection="${index}"]`);
+      applySelectionRectToElement(frame, target, item);
+    });
+  }
+}
+
 function clampPercent(value) {
   return Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
 }
 
 function getLearnedHalfPages(plan) {
-  return Math.max(0, Math.min((plan.summary.currentHalfPage || 1) - 1, plan.summary.totalHalfPages || 0));
+  return Math.max(0, Number(plan?.summary?.learnedHalfPages || 0));
 }
 
 function getDashboardMetrics(payload) {
   const { plan, errorTracking } = payload;
   const presentKeys = plan.order.filter((key) => plan.blocks[key].present);
-  const completedKeys = presentKeys.filter((key) => plan.blocks[key].done);
+  const completedKeys = presentKeys.filter((key) => plan.blocks[key].dayComplete);
   const learnedHalfPages = getLearnedHalfPages(plan);
   const learnedPages = learnedHalfPages / 2;
+  const progressHalfPages = Math.max(0, Number(plan.summary.learnedHalfPagesOverall || learnedHalfPages));
+  const progressTotalHalfPages = Math.max(1, Number(plan.summary.totalProgramHalfPages || plan.summary.totalHalfPages || 1));
   const waveCheckedCount = plan.blocks.new.present ? Number(plan.blocks.new.checkedCount || 0) : 9;
   const waveCompleteCount = plan.blocks.new.present
     ? (plan.blocks.new.waves || []).filter((wave) => wave.complete).length
     : 3;
   const dailyPercent = presentKeys.length ? (completedKeys.length / presentKeys.length) * 100 : 100;
-  const learnedPercent = plan.summary.totalHalfPages ? (learnedHalfPages / plan.summary.totalHalfPages) * 100 : 0;
+  const learnedPercent = progressTotalHalfPages ? (progressHalfPages / progressTotalHalfPages) * 100 : 0;
   const wavePercent = (waveCheckedCount / 9) * 100;
   const stablePercent =
     learnedPages > 0
@@ -1143,6 +4073,8 @@ function getDashboardMetrics(payload) {
     completedKeys,
     learnedHalfPages,
     learnedPages,
+    progressHalfPages,
+    progressTotalHalfPages,
     waveCheckedCount,
     waveCompleteCount,
     dailyPercent: clampPercent(dailyPercent),
@@ -1157,7 +4089,7 @@ function getCurrentFocusBlock(plan) {
 
   for (const key of order) {
     const block = plan.blocks?.[key];
-    if (!block || !block.present || block.done) {
+    if (!block || !block.present || block.dayComplete) {
       continue;
     }
 
@@ -1234,7 +4166,7 @@ function getCelebrationLayer() {
   return $("#celebration-layer");
 }
 
-function launchMiniCelebration(origin) {
+function launchMiniCelebration(origin, tone = "success") {
   const layer = getCelebrationLayer();
   if (!layer || !origin) {
     return;
@@ -1242,7 +4174,11 @@ function launchMiniCelebration(origin) {
 
   const centerX = origin.left + origin.width / 2;
   const centerY = origin.top + origin.height / 2;
-  const colors = ["#1d5b4f", "#b38946", "#5b7588", "#8f5e49", "#6e8d59"];
+  const palettes = {
+    success: ["#1d5b4f", "#6e8d59", "#8bc7a0", "#b8e0c7", "#b38946"],
+    failure: ["#8f5e49", "#c95d59", "#d7847c", "#f0b2aa", "#b38946"],
+  };
+  const colors = palettes[tone] || palettes.success;
 
   for (let index = 0; index < 14; index += 1) {
     const piece = document.createElement("span");
@@ -1259,28 +4195,36 @@ function launchMiniCelebration(origin) {
   }
 }
 
+function launchButtonPulse(origin, tone = "success") {
+  const layer = getCelebrationLayer();
+  if (!layer || !origin) {
+    return;
+  }
+
+  const ring = document.createElement("span");
+  ring.className = `celebration-ring ${tone === "failure" ? "failure" : "success"}`;
+  ring.style.left = `${origin.left + origin.width / 2}px`;
+  ring.style.top = `${origin.top + origin.height / 2}px`;
+  ring.style.width = `${Math.max(origin.width + 18, 92)}px`;
+  ring.style.height = `${Math.max(origin.height + 18, 52)}px`;
+  layer.appendChild(ring);
+  setTimeout(() => ring.remove(), 720);
+}
+
+function launchFailureCelebration(origin) {
+  launchButtonPulse(origin, "failure");
+}
+
 function launchGrandCelebration() {
   const layer = getCelebrationLayer();
   if (!layer) {
     return;
   }
 
-  const colors = ["#1d5b4f", "#b38946", "#5b7588", "#8f5e49", "#6e8d59", "#f2d67b"];
-  const width = window.innerWidth;
-
-  for (let index = 0; index < 90; index += 1) {
-    const piece = document.createElement("span");
-    piece.className = "celebration-piece rain";
-    piece.style.left = `${Math.random() * width}px`;
-    piece.style.top = `${-20 - Math.random() * 160}px`;
-    piece.style.setProperty("--dx", `${(Math.random() - 0.5) * 220}px`);
-    piece.style.setProperty("--dy", `${window.innerHeight + 260 + Math.random() * 220}px`);
-    piece.style.setProperty("--rotation", `${(Math.random() - 0.5) * 960}deg`);
-    piece.style.setProperty("--piece-color", colors[index % colors.length]);
-    piece.style.animationDuration = `${1800 + Math.random() * 1400}ms`;
-    layer.appendChild(piece);
-    setTimeout(() => piece.remove(), 3600);
-  }
+  const pulse = document.createElement("span");
+  pulse.className = "celebration-pulse green soft";
+  layer.appendChild(pulse);
+  setTimeout(() => pulse.remove(), 1500);
 }
 
 function renderRouteProgress(plan) {
@@ -1304,7 +4248,7 @@ function renderRouteProgress(plan) {
       return;
     }
 
-    if (block.done) {
+    if (block.dayComplete) {
       step.classList.add("done");
       if (status) {
         status.textContent = t("route.status.done");
@@ -1382,10 +4326,12 @@ function renderTodayFocus(payload) {
   const focusMeta = [];
 
   if (focusRange) {
+    const focusSurahs = buildRangeSurahSummaryText(focusRange);
     focusMeta.push(`
       <article class="focus-chip">
         <span class="eyebrow">${escapeHtml(t("meta.range", {}, payload))}</span>
         <strong>${escapeHtml(focusRange.label)}</strong>
+        ${focusSurahs ? `<p class="helper">${escapeHtml(focusSurahs)}</p>` : ""}
       </article>
     `);
     focusMeta.push(`
@@ -1435,7 +4381,7 @@ function statusMarkup(block) {
   if (!block.present) {
     return `<span class="status-pill empty">${escapeHtml(t("status.unavailable"))}</span>`;
   }
-  if (block.done) {
+  if (block.dayComplete) {
     return `<span class="status-pill done">${escapeHtml(t("status.done"))}</span>`;
   }
   if (block.locked) {
@@ -1457,11 +4403,19 @@ function rangeBlockMarkup(range) {
     return `<div class="empty-note">${escapeHtml(t("emptyNote"))}</div>`;
   }
 
+  const surahSummary = buildRangeSurahSummaryText(range);
+  const rangeHeading = surahSummary ? `${t("meta.range")} · ${t("meta.surahs")}` : t("meta.range");
+
   return `
     <div class="card-meta">
-      <article class="mini-chip">
-        <span class="eyebrow">${escapeHtml(t("meta.range"))}</span>
+      <article class="mini-chip surah-range-chip">
+        <span class="eyebrow">${escapeHtml(rangeHeading)}</span>
         <strong>${escapeHtml(range.label)}</strong>
+        ${
+          surahSummary
+          ? `<p class="helper range-surah-summary">${escapeHtml(surahSummary)}</p>${buildRangeSurahChips(range, { compact: true })}`
+          : ""
+        }
       </article>
       <article class="mini-chip">
         <span class="eyebrow">${escapeHtml(t("meta.size"))}</span>
@@ -1471,12 +4425,25 @@ function rangeBlockMarkup(range) {
   `;
 }
 
-function cardRangeSummary(range) {
+function cardRangeSummaryLegacy(range) {
   if (!range) {
     return t("emptyNote");
   }
 
   return `${range.label} · ${range.countLabel || formatPageCountFromHalfPages(range.count, state.payload)}`;
+}
+
+function cardRangeSummary(range) {
+  if (!range) {
+    return t("emptyNote");
+  }
+
+  const summaryParts = [range.label, range.countLabel || formatPageCountFromHalfPages(range.count, state.payload)];
+  const surahSummary = buildRangeSurahSummaryText(range);
+  if (surahSummary) {
+    summaryParts.push(surahSummary);
+  }
+  return summaryParts.join(" | ");
 }
 
 function cardFrameMarkup({ blockKey, block, headerContent, summaryText, detailContent, footerContent = "" }) {
@@ -1527,15 +4494,20 @@ function oldCardMarkup(block) {
         return "";
       }
 
+      const windowSurahSummary = buildRangeSurahSummaryText(window.range);
+
       return `
         <article class="rotation-chip mini-window ${window.active ? "active-window" : ""}">
           <span class="eyebrow">${escapeHtml(window.label)}</span>
           <strong>${escapeHtml(window.range.label)}</strong>
           <p class="helper">${escapeHtml(window.range.countLabel)}</p>
+          ${windowSurahSummary ? `<p class="helper range-surah-summary">${escapeHtml(windowSurahSummary)}</p>` : ""}
         </article>
       `;
     })
     .join("");
+
+  const poolSurahSummary = buildRangeSurahSummaryText(block.poolRange);
 
   const headerContent = `
     <div class="card-head">
@@ -1558,6 +4530,7 @@ function oldCardMarkup(block) {
               <span class="eyebrow">${escapeHtml(t("card.old.pool"))}</span>
               <strong>${escapeHtml(block.poolRange.label)}</strong>
               <p class="helper">${escapeHtml(block.poolRange.countLabel)}</p>
+              ${poolSurahSummary ? `<p class="helper range-surah-summary">${escapeHtml(poolSurahSummary)}</p>` : ""}
             </article>
           </div>
           <div class="summary-lines">
@@ -1726,23 +4699,33 @@ function renderSummary(payload) {
   const { plan } = payload;
   const metrics = getDashboardMetrics(payload);
   const rank = getRankFromProgress(metrics.learnedPercent);
+  const phaseHeadline = `${plan.summary.phaseLabel} | ${plan.summary.phaseDirectionLabel}`;
+  const coveredCorpusLabel = t(
+    "summary.learned",
+    { count: formatPageCountFromHalfPages(metrics.learnedHalfPages, payload) },
+    payload,
+  );
 
   $("#summary").innerHTML = `
     <div class="summary-hero">
-      <article class="summary-progress tone-${escapeHtml(rank.tone)} ${plan.canAdvanceDay ? "complete" : ""}">
+      <article class="summary-progress tone-${escapeHtml(rank.tone)} ${plan.dayClosed ? "complete" : ""}">
         <div class="summary-progress-head">
           <div class="summary-progress-copy">
             <span class="eyebrow">${escapeHtml(t("summary.progress", {}, payload))}</span>
-            <strong>${escapeHtml(t("summary.learned", { count: formatPageCountFromHalfPages(metrics.learnedHalfPages, payload) }, payload))}</strong>
+            <strong>${escapeHtml(phaseHeadline)}</strong>
           </div>
           <span class="summary-progress-value">${escapeHtml(`${metrics.learnedPercent}%`)}</span>
         </div>
         <div class="summary-progress-track" aria-hidden="true">
           <span class="summary-progress-fill" style="width:${escapeHtml(metrics.learnedPercent)}%;"></span>
         </div>
-        <p class="summary-progress-note">${escapeHtml(t("summary.totalPages", { count: plan.summary.totalPages }, payload))}</p>
+        <p class="summary-progress-note">${escapeHtml(`${coveredCorpusLabel} | ${t("summary.totalPages", { count: plan.summary.totalPages }, payload)}`)}</p>
       </article>
       <div class="summary-grid">
+        <article class="summary-chip">
+          <span class="eyebrow">${escapeHtml(t("summary.phase", {}, payload))}</span>
+          <strong>${escapeHtml(plan.summary.phaseLabel)}</strong>
+        </article>
         <article class="summary-chip">
           <span class="eyebrow">${escapeHtml(t("summary.day", {}, payload))}</span>
           <strong>${escapeHtml(plan.summary.programDayIndex)}</strong>
@@ -1778,30 +4761,30 @@ function renderDayStatus(payload) {
   const { plan } = payload;
   const metrics = getDashboardMetrics(payload);
   const missing = [];
-  if (!plan.blocks.old.done) {
+  if (!plan.blocks.old.dayComplete) {
     missing.push(plan.blocks.old.title);
   }
-  if (!plan.blocks.consolidation.done) {
+  if (!plan.blocks.consolidation.dayComplete) {
     missing.push(plan.blocks.consolidation.title);
   }
-  if (!plan.blocks.recent.done) {
+  if (!plan.blocks.recent.dayComplete) {
     missing.push(plan.blocks.recent.title);
   }
-  if (!plan.blocks.yesterday.done) {
+  if (!plan.blocks.yesterday.dayComplete) {
     missing.push(plan.blocks.yesterday.title);
   }
-  if (!plan.blocks.new.done) {
+  if (!plan.blocks.new.dayComplete) {
     missing.push(plan.blocks.new.title);
   }
 
-  $("#day-status").innerHTML = plan.canAdvanceDay
+  $("#day-status").innerHTML = plan.dayClosed
     ? `
-        <strong>${escapeHtml(t("day.completeTitle", {}, payload))}</strong>
+        <strong>${escapeHtml(t(plan.skippedMemorizationDay ? "day.skippedTitle" : "day.completeTitle", {}, payload))}</strong>
         <div class="status-progress">
           <div class="progress-bar green large"><span style="width: 100%"></span></div>
-          <p class="helper">${escapeHtml(t("day.completeHelper", { done: metrics.completedKeys.length, total: metrics.presentKeys.length }, payload))}</p>
+          <p class="helper">${escapeHtml(t(plan.skippedMemorizationDay ? "day.skippedHelper" : "day.completeHelper", { done: metrics.completedKeys.length, total: metrics.presentKeys.length }, payload))}</p>
         </div>
-        <p>${escapeHtml(t("day.completeText", {}, payload))}</p>
+        <p>${escapeHtml(t(plan.skippedMemorizationDay ? "day.skippedText" : "day.completeText", {}, payload))}</p>
       `
     : `
         <strong>${escapeHtml(t("day.openTitle", {}, payload))}</strong>
@@ -1813,6 +4796,7 @@ function renderDayStatus(payload) {
       `;
 
   $("#advance-button").disabled = !plan.canAdvanceDay;
+  $("#skip-memorization-button").disabled = !plan.canSkipMemorizationDay;
 }
 
 function renderSettingsPreview(payload) {
@@ -1822,7 +4806,21 @@ function renderSettingsPreview(payload) {
   }
 
   const { plan } = payload;
+  const mode = payload.settings.programMode || "forward";
+  const phaseProgressItems = (plan.summary.phaseProgressHalfPages || []).map((halfPages, index) => ({
+    label: getPhaseLabel(mode, index + 1, payload),
+    value: formatCoveredPagesValue(halfPages, payload),
+  }));
   const previewItems = [
+    {
+      label: t("settings.previewPhase", {}, payload),
+      value: plan.summary.phaseLabel,
+    },
+    {
+      label: t("settings.previewPath", {}, payload),
+      value: plan.summary.phaseDirectionLabel,
+    },
+    ...phaseProgressItems,
     {
       label: t("settings.previewCurrent", {}, payload),
       value: plan.summary.currentHalfPageLabel,
@@ -1870,19 +4868,33 @@ function renderErrorTracking(payload) {
   const summary = payload.errorTracking.summary;
   const pageErrors = payload.pageErrors || {};
   const plan = payload.plan || {};
+  const juzGroups = ensureCollapsedJuzState(totalPages).map((group) => ({
+    ...group,
+    collapsed: state.collapsedJuzs[group.juz] !== false,
+    pageCells: [],
+    errorPages: 0,
+    learnedPages: 0,
+  }));
   state.activePage =
     Number.isInteger(state.activePage) && state.activePage >= 1 && state.activePage <= totalPages ? state.activePage : null;
 
   renderProgramLegend(plan);
 
-  const pageCells = [];
   let effectiveLearnedPages = 0;
   for (let page = 1; page <= totalPages; page += 1) {
     const entry = normalizePageEntry(pageErrors[String(page)]);
     const programZones = getPageProgramZones(plan, page);
+    const surahCaption = buildSurahCaption(page);
+    const surahStarts = getSurahStartNamesForPage(page);
     const primaryZone = getPrimaryProgramZoneInfo(programZones);
-    const effectiveLearned = entry.learned || isLearnedFromProgram(programZones);
+    const learnedFromProgram = isLearnedFromProgram(payload, page);
+    const effectiveLearned = learnedFromProgram;
     const programTitleSuffix = programZones.length ? ` - ${programZones.map((zone) => zone.label).join(", ")}` : "";
+    const surahTitleSuffix = surahStarts.length
+      ? ` - ${surahStarts.map((surah) => `${surah.simple} (${surah.arabic})`).join(", ")}`
+      : surahCaption
+        ? ` - ${surahCaption.simple} (${surahCaption.arabic})`
+        : "";
     const stateLabel = buildPageStateLabel(entry, effectiveLearned);
     const compactStateLabel = buildPageGridStateLabel(entry, effectiveLearned);
 
@@ -1890,20 +4902,50 @@ function renderErrorTracking(payload) {
       effectiveLearnedPages += 1;
     }
 
-    pageCells.push(`
+    const currentJuzGroup = juzGroups.find((group) => page >= group.startPage && page <= group.endPage);
+    if (currentJuzGroup) {
+      if (entry.dominantSeverity !== "none") {
+        currentJuzGroup.errorPages += 1;
+      }
+      if (effectiveLearned) {
+        currentJuzGroup.learnedPages += 1;
+      }
+    }
+
+    const cellMarkup = `
       <button
         class="${escapeHtml(pageCellClass(entry, page, effectiveLearned, programZones))}"
         type="button"
         data-page-cell="${escapeHtml(page)}"
         data-severity="${escapeHtml(entry.dominantSeverity)}"
         data-learned="${escapeHtml(effectiveLearned)}"
-        title="${escapeHtml(t("page.label", { page }, payload))} - ${escapeHtml(stateLabel)}${escapeHtml(programTitleSuffix)}"
+        title="${escapeHtml(t("page.label", { page }, payload))} - ${escapeHtml(stateLabel)}${escapeHtml(surahTitleSuffix)}${escapeHtml(programTitleSuffix)}"
       >
         <span class="page-cell-number">${escapeHtml(page)}</span>
         <span class="page-cell-state">${escapeHtml(compactStateLabel)}</span>
-        ${primaryZone ? `<span class="page-cell-zone zone-${escapeHtml(primaryZone.key)}">${escapeHtml(primaryZone.shortLabel)}</span>` : ""}
+        ${
+          surahCaption
+            ? `<span class="page-cell-surah ${surahCaption.startsHere ? "start" : ""}">
+                <em>${escapeHtml(surahCaption.arabic)}</em>
+                <span>${escapeHtml(surahCaption.simple)}</span>
+              </span>`
+            : ""
+        }
+        ${
+          primaryZone
+            ? `
+              <span class="page-cell-footer">
+                ${primaryZone ? `<span class="page-cell-zone zone-${escapeHtml(primaryZone.key)}">${escapeHtml(primaryZone.shortLabel)}</span>` : ""}
+              </span>
+            `
+            : ""
+        }
       </button>
-    `);
+    `;
+
+    if (currentJuzGroup) {
+      currentJuzGroup.pageCells.push(cellMarkup);
+    }
   }
 
   $("#error-summary").innerHTML = `
@@ -1935,7 +4977,286 @@ function renderErrorTracking(payload) {
   `;
 
   renderPageQuickActions(payload);
-  $("#error-grid").innerHTML = pageCells.join("");
+  $("#error-grid").innerHTML = juzGroups
+    .map((group) => `
+      <section class="juz-group ${group.collapsed ? "collapsed" : "expanded"}" data-juz-group="${escapeHtml(group.juz)}">
+        <button
+          class="juz-group-toggle"
+          type="button"
+          data-toggle-juz="${escapeHtml(group.juz)}"
+          aria-expanded="${escapeHtml(!group.collapsed)}"
+          aria-controls="juz-pages-${escapeHtml(group.juz)}"
+        >
+          <div class="juz-group-copy">
+            <p class="eyebrow">${escapeHtml(t("pages.juzLabel", { number: group.juz }, payload))}</p>
+            <div class="juz-group-title-line">
+              <strong>${escapeHtml(group.name)}</strong>
+              ${group.arabicName ? `<span class="juz-group-arabic">${escapeHtml(group.arabicName)}</span>` : ""}
+            </div>
+            <p class="juz-group-pages">${escapeHtml(t("pages.juzPages", { start: group.startPage, end: group.endPage }, payload))}</p>
+          </div>
+          <div class="juz-group-meta">
+            <span class="juz-stat-pill">${escapeHtml(t("pages.juzPageCount", { count: group.endPage - group.startPage + 1 }, payload))}</span>
+            <span class="juz-stat-pill ${group.errorPages ? "has-errors" : ""}">${escapeHtml(t("pages.juzErrorCount", { count: group.errorPages }, payload))}</span>
+            <span class="juz-stat-pill ${group.learnedPages ? "is-learned" : ""}">${escapeHtml(t("pages.juzLearnedCount", { count: group.learnedPages }, payload))}</span>
+            <span class="juz-toggle-pill">${escapeHtml(t(group.collapsed ? "pages.juzExpand" : "pages.juzCollapse", {}, payload))}</span>
+            <span class="juz-group-chevron" aria-hidden="true"></span>
+          </div>
+        </button>
+        <div id="juz-pages-${escapeHtml(group.juz)}" class="page-grid juz-page-grid" ${group.collapsed ? "hidden" : ""}>${group.pageCells.join("")}</div>
+      </section>
+    `)
+    .join("");
+}
+
+function renderSurahGame(payload) {
+  const container = $("#surah-game");
+  if (!container) {
+    return;
+  }
+
+  const corpus = ensureSurahGameState(payload);
+  const gameMode = state.surahGame.gameMode || "quiz";
+  const question = state.surahGame.question;
+  const memoryRound = state.surahGame.memoryRound;
+  const centerSurah = getSurahById(question?.centerId);
+  const feedbackSurah = getSurahById(question?.correctId);
+  const isRangeTooSmall = corpus.surahs.length < 2;
+  const canStartMemory = corpus.surahs.length >= SURAH_MEMORY_LENGTH;
+  const canStartQuiz = corpus.playable;
+  const canStartCurrentMode = gameMode === "memory" ? canStartMemory : canStartQuiz;
+  const accuracy = getSurahGameAccuracy();
+  const heatTier = getSurahHeatTier();
+  const isFullRange = corpus.startId === 1 && corpus.endId === SURAH_PAGE_RANGES.length;
+  const heatNote =
+    heatTier.next === null
+      ? t("surahs.heatMax", {}, payload)
+      : t("surahs.heatNext", { count: heatTier.remaining }, payload);
+
+  const questionMarkup = gameMode === "memory" && !canStartMemory
+    ? buildSurahMemoryMarkup(payload, corpus, heatTier)
+    : gameMode !== "memory" && !canStartQuiz
+    ? `
+      <section class="surah-empty-state">
+        <h3>${escapeHtml(t(isRangeTooSmall ? "surahs.emptyRangeTitle" : "surahs.emptyAllTitle", {}, payload))}</h3>
+        <p class="muted">${escapeHtml(t(isRangeTooSmall ? "surahs.emptyRangeHelp" : "surahs.emptyAllHelp", {}, payload))}</p>
+        <button class="secondary-button" type="button" data-surah-game-action="full-range">
+          ${escapeHtml(t("surahs.rangeQuickAll", {}, payload))}
+        </button>
+      </section>
+    `
+    : !state.surahGame.isStarted
+    ? `
+      <section class="surah-empty-state">
+        <h3>${escapeHtml(t("surahs.readyTitle", {}, payload))}</h3>
+        <p class="muted">${escapeHtml(t(gameMode === "memory" ? "surahs.readyHelpMemory" : "surahs.readyHelpQuiz", {}, payload))}</p>
+        <button class="primary-button" type="button" data-surah-game-action="start" ${canStartCurrentMode ? "" : "disabled"}>
+          ${escapeHtml(t("surahs.playButton", {}, payload))}
+        </button>
+      </section>
+    `
+    : gameMode === "memory"
+    ? buildSurahMemoryMarkup(payload, corpus, heatTier)
+    : question && centerSurah
+    ? `
+      <section class="surah-question-shell">
+        <article class="surah-spotlight">
+          <span class="eyebrow">${escapeHtml(t("surahs.currentLabel", {}, payload))}</span>
+          ${buildSurahIdentityMarkup(centerSurah)}
+          <div class="surah-coverage">
+            <span class="surah-coverage-label">${escapeHtml(t("surahs.activeSpanLabel", {}, payload))}</span>
+            ${buildSurahCoverageMarkup(corpus)}
+          </div>
+        </article>
+
+        <div class="surah-question-panel">
+          <div class="surah-question-copy">
+            <span class="eyebrow">${escapeHtml(
+              t(question.promptType === "next" ? "surahs.promptNext" : "surahs.promptPrevious", {}, payload),
+            )}</span>
+            <h3>${escapeHtml(t("surahs.answerLabel", {}, payload))}</h3>
+          </div>
+
+          <div class="surah-choice-grid">
+            ${question.choiceIds
+              .map((choiceId) => {
+                const surah = getSurahById(choiceId);
+                const isAnswered = question.answeredId !== null;
+                const isSelected = question.answeredId === choiceId;
+                const isCorrectChoice = question.correctId === choiceId;
+                const buttonClasses = ["surah-choice-button"];
+                if (isAnswered && isCorrectChoice) {
+                  buttonClasses.push("is-correct");
+                }
+                if (isAnswered && isSelected && !isCorrectChoice) {
+                  buttonClasses.push("is-wrong");
+                }
+                if (isAnswered && !isSelected && !isCorrectChoice) {
+                  buttonClasses.push("is-muted");
+                }
+                return `
+                  <button
+                    class="${buttonClasses.join(" ")}"
+                    type="button"
+                    data-surah-game-action="answer"
+                    data-choice-id="${escapeHtml(choiceId)}"
+                    ${isAnswered ? "disabled" : ""}
+                  >
+                    ${buildSurahIdentityMarkup(surah, { compact: true })}
+                  </button>
+                `;
+              })
+              .join("")}
+          </div>
+
+          ${
+            question.answeredId !== null
+              ? `
+                <div class="surah-feedback ${question.isCorrect ? "correct" : "wrong"}">
+                  <p>${escapeHtml(
+                    question.isCorrect
+                      ? t("surahs.feedbackCorrect", {}, payload)
+                      : t("surahs.feedbackWrong", { name: feedbackSurah?.simple || "" }, payload),
+                  )}</p>
+                  ${
+                    question.isCorrect
+                      ? `
+                        <div class="surah-feedback-heat">
+                          ${buildSurahFlamesClusterMarkup(state.surahGame.streak)}
+                          <strong>${escapeHtml(t(heatTier.key, {}, payload))}</strong>
+                          <span>${escapeHtml(t("surahs.streakValue", { count: state.surahGame.streak }, payload))}</span>
+                        </div>
+                      `
+                      : ""
+                  }
+                  <div class="surah-sequence-block">
+                    <span class="eyebrow">${escapeHtml(t("surahs.sequenceLabel", {}, payload))}</span>
+                    <div class="surah-sequence-grid">
+                      ${buildSurahSequenceMarkup(question.centerId)}
+                    </div>
+                  </div>
+                  <button class="primary-button" type="button" data-surah-game-action="next">
+                    ${escapeHtml(t("surahs.nextQuestion", {}, payload))}
+                  </button>
+                </div>
+              `
+              : ""
+          }
+        </div>
+      </section>
+    `
+    : `
+      <section class="surah-empty-state">
+        <h3>${escapeHtml(t("surahs.readyTitle", {}, payload))}</h3>
+        <p class="muted">${escapeHtml(t(gameMode === "memory" ? "surahs.readyHelpMemory" : "surahs.readyHelpQuiz", {}, payload))}</p>
+        <button class="primary-button" type="button" data-surah-game-action="start">
+          ${escapeHtml(t("surahs.playButton", {}, payload))}
+        </button>
+      </section>
+    `;
+
+  container.innerHTML = `
+    <div class="surah-game-shell tier-${escapeHtml(heatTier.theme)}">
+      <div class="section-head surah-game-head">
+        <div>
+          <p class="eyebrow">${escapeHtml(t("surahs.eyebrow", {}, payload))}</p>
+          <h2>${escapeHtml(t("surahs.title", {}, payload))}</h2>
+        </div>
+        <button class="secondary-button" type="button" data-surah-game-action="restart">
+          ${escapeHtml(t("surahs.restart", {}, payload))}
+        </button>
+      </div>
+      <p class="muted surah-game-help">${escapeHtml(t("surahs.help", {}, payload))}</p>
+
+      ${buildSurahGameModeMarkup(payload)}
+
+      <section class="surah-range-shell">
+        <div class="surah-range-copy">
+          <span class="eyebrow">${escapeHtml(t("surahs.rangeLabel", {}, payload))}</span>
+          <p class="helper">${escapeHtml(t("surahs.rangeHint", {}, payload))}</p>
+        </div>
+        <div class="surah-range-controls">
+          <label class="surah-select-field">
+            <span>${escapeHtml(t("surahs.rangeFrom", {}, payload))}</span>
+            <select data-surah-game-select="start">${buildSurahSelectOptions(corpus.startId)}</select>
+          </label>
+          <label class="surah-select-field">
+            <span>${escapeHtml(t("surahs.rangeTo", {}, payload))}</span>
+            <select data-surah-game-select="end">${buildSurahSelectOptions(corpus.endId)}</select>
+          </label>
+          <button
+            class="secondary-button surah-range-button ${isFullRange ? "active" : ""}"
+            type="button"
+            data-surah-game-action="full-range"
+          >
+            ${escapeHtml(t("surahs.rangeQuickAll", {}, payload))}
+          </button>
+        </div>
+      </section>
+
+      <section class="surah-game-meta">
+        <article class="surah-meta-card">
+          <span class="eyebrow">${escapeHtml(t("surahs.activeSpanLabel", {}, payload))}</span>
+          <strong>${escapeHtml(corpus.label)}</strong>
+          <div class="surah-coverage">
+            <span class="surah-coverage-label">${escapeHtml(t("surahs.coverageLabel", {}, payload))}</span>
+            ${buildSurahCoverageMarkup(corpus)}
+          </div>
+          <p class="helper">${escapeHtml(t("surahs.countValue", { count: corpus.surahs.length }, payload))}</p>
+        </article>
+
+        <article class="surah-meta-card surah-heat-card tier-${escapeHtml(heatTier.theme)} ${state.surahGame.streak ? "is-live" : ""}">
+          <span class="eyebrow">${escapeHtml(t("surahs.heatLabel", {}, payload))}</span>
+          <div class="surah-heat-head">
+            ${buildSurahFlamesClusterMarkup(state.surahGame.streak)}
+            <div class="surah-heat-copy">
+              <strong>${escapeHtml(t(heatTier.key, {}, payload))}</strong>
+              <span>${escapeHtml(
+                gameMode === "memory" && memoryRound?.phase === "preview"
+                  ? t("surahs.memoryCountdownValue", { count: getSurahMemoryCountdown(memoryRound).remainingSeconds }, payload)
+                  : t("surahs.streakValue", { count: state.surahGame.streak }, payload),
+              )}</span>
+            </div>
+          </div>
+          <div class="surah-heat-track" aria-hidden="true">
+            <span style="width:${escapeHtml(heatTier.progress)}%"></span>
+          </div>
+          <p class="helper">${escapeHtml(heatNote)}</p>
+        </article>
+      </section>
+
+      <section class="surah-stat-grid">
+          <article class="surah-stat-card">
+            <span>${escapeHtml(t("surahs.statsScore", {}, payload))}</span>
+            <strong>${escapeHtml(state.surahGame.correct)}</strong>
+          </article>
+          <article class="surah-stat-card">
+            <span>${escapeHtml(t("surahs.statsAnswered", {}, payload))}</span>
+            <strong>${escapeHtml(state.surahGame.answered)}</strong>
+          </article>
+          <article class="surah-stat-card">
+            <span>${escapeHtml(t("surahs.statsStreak", {}, payload))}</span>
+            <strong>${escapeHtml(state.surahGame.streak)}</strong>
+          </article>
+          <article class="surah-stat-card">
+            <span>${escapeHtml(t("surahs.statsBestStreak", {}, payload))}</span>
+            <strong>${escapeHtml(state.surahGame.bestStreak)}</strong>
+          </article>
+          <article class="surah-stat-card">
+            <span>${escapeHtml(t("surahs.statsAccuracy", {}, payload))}</span>
+            <strong>${escapeHtml(t("surahs.accuracyValue", { count: accuracy }, payload))}</strong>
+          </article>
+      </section>
+
+      ${questionMarkup}
+    </div>
+  `;
+
+  if (state.surahGame.isStarted && gameMode === "memory") {
+    scheduleSurahGamePreview(payload);
+  } else {
+    clearSurahGamePreviewTimer();
+  }
 }
 
 function renderCards(payload) {
@@ -1959,11 +5280,14 @@ function renderCards(payload) {
 function fillForm(payload) {
   $("#first-name").value = payload.settings.firstName || "";
   $("#language").value = getLanguage(payload);
-  $("#current-page").value = getCurrentPageFromHalfPage(payload.progress.currentHalfPage, payload.settings.totalHalfPages);
-  $("#current-half").value = getCurrentHalfLabelFromHalfPage(payload.progress.currentHalfPage, payload.settings.totalHalfPages);
+  $("#program-mode").value = payload.settings.programMode || "forward";
+  if ($("#phase-index")) {
+    $("#phase-index").value = String(payload.progress.phaseIndex || 1);
+  }
   $("#daily-new-half-pages").value = payload.settings.dailyNewHalfPages;
   $("#program-day-index").value = payload.progress.programDayIndex;
   $("#total-half-pages").value = payload.settings.totalHalfPages;
+  renderPhaseProgressEditor(payload);
   syncCurrentPageMax();
   syncDailyNewPresets();
 }
@@ -1972,46 +5296,43 @@ function bindPageCellSelection() {
   $all("[data-page-cell]").forEach((button) => {
     button.addEventListener("click", () => {
       const page = Number(button.dataset.pageCell);
-      state.activePage = state.activePage === page ? null : page;
+      state.activePage = page;
+      openPageEditor(page);
       renderErrorTracking(state.payload);
+      renderPageEditorModal(state.payload);
       bindPageQuickActions();
       bindPageCellSelection();
-      showToast(state.activePage ? t("toast.pageSelected", { page }) : t("toast.pageClosed", { page }));
+      bindPageEditorActions();
+      showToast(t("toast.pageSelected", { page }));
+    });
+  });
+}
+
+function bindJuzGroupToggles() {
+  $all("[data-toggle-juz]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const juz = Number(button.dataset.toggleJuz);
+      if (!Number.isInteger(juz) || juz < 1) {
+        return;
+      }
+
+      state.collapsedJuzs[juz] = !state.collapsedJuzs[juz];
+      renderErrorTracking(state.payload);
+      bindJuzGroupToggles();
+      bindPageQuickActions();
+      bindPageCellSelection();
     });
   });
 }
 
 function bindPageQuickActions() {
-  $all("[data-page-note-input]").forEach((input) => {
-    input.addEventListener("input", () => {
-      setQuickNoteDraft(Number(input.dataset.pageNoteInput), input.value);
-    });
-  });
-
-  $all("[data-page-quick-action]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      try {
-        const page = Number(button.dataset.page);
-        const note = getQuickNoteDraft(page);
-        state.payload = await api("/api/page-errors", {
-          method: "POST",
-          body: JSON.stringify({
-            page,
-            severity: String(button.dataset.pageQuickAction || ""),
-            note,
-          }),
-        });
-        clearQuickNoteDraft(page);
-        render();
-        showToast(
-          t("toast.errorAdded", {
-            severity: severityLabel(String(button.dataset.pageQuickAction || "")),
-            page: button.dataset.page,
-          }),
-        );
-      } catch (error) {
-        showToast(error.message, true);
-      }
+  $all("[data-open-page-editor]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const page = Number(button.dataset.openPageEditor);
+      state.activePage = page;
+      openPageEditor(page);
+      renderPageEditorModal(state.payload);
+      bindPageEditorActions();
     });
   });
 
@@ -2025,7 +5346,6 @@ function bindPageQuickActions() {
             page,
           }),
         });
-        clearQuickNoteDraft(page);
         render();
         showToast(t("toast.errorsCleared", { page: button.dataset.pageQuickClear }));
       } catch (error) {
@@ -2040,6 +5360,369 @@ function bindPageQuickActions() {
       renderErrorTracking(state.payload);
       bindPageQuickActions();
       bindPageCellSelection();
+    });
+  });
+}
+
+function bindPageEditorActions() {
+  const modal = $("#page-editor-modal");
+  if (!modal || modal.hidden) {
+    return;
+  }
+
+  $all("[data-page-editor-close]").forEach((button) => {
+    button.addEventListener("click", () => {
+      closePageEditor();
+      renderPageEditorModal(state.payload);
+    });
+  });
+
+  $all("[data-page-editor-scope]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.pageEditor.scope = String(button.dataset.pageEditorScope || "word");
+      if (state.pageEditor.scope === "next-page-link") {
+        state.pageEditor.rawRect = null;
+        state.pageEditor.rect = null;
+        state.pageEditor.anchor = null;
+      } else if (state.pageEditor.rawRect && stage) {
+        const snapped = snapPageEditorSelection(stage, state.pageEditor.rawRect, state.pageEditor.scope);
+        state.pageEditor.rawRect = snapped.rawRect;
+        state.pageEditor.rect = snapped.rect;
+        state.pageEditor.anchor = snapped.anchor;
+      }
+      renderPageEditorModal(state.payload);
+      bindPageEditorActions();
+    });
+  });
+
+  $all("[data-page-editor-note]").forEach((input) => {
+    input.addEventListener("input", () => {
+      state.pageEditor.note = input.value.slice(0, 280);
+    });
+  });
+
+  $all("[data-page-editor-clear]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.pageEditor.rawRect = null;
+      state.pageEditor.rect = null;
+      state.pageEditor.anchor = null;
+      renderPageEditorModal(state.payload);
+      bindPageEditorActions();
+    });
+  });
+
+  $all("[data-page-editor-save]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        const scope = state.pageEditor.scope || "word";
+        const requiresSelection = scope !== "next-page-link";
+        if ((requiresSelection && !state.pageEditor.rect) || !Number.isInteger(state.pageEditor.page)) {
+          return;
+        }
+
+        const page = state.pageEditor.page;
+        state.payload = await api("/api/page-errors", {
+          method: "POST",
+          body: JSON.stringify({
+            page,
+            scope,
+            rect: requiresSelection ? state.pageEditor.rect : null,
+            anchor: requiresSelection ? state.pageEditor.anchor : null,
+            note: state.pageEditor.note || "",
+          }),
+        });
+        state.pageEditor.rawRect = null;
+        state.pageEditor.rect = null;
+        state.pageEditor.anchor = null;
+        state.pageEditor.note = "";
+        render();
+        showToast(
+          t("toast.errorAdded", {
+            severity: severityLabel(errorScopeToSeverity(scope)),
+            page,
+          }),
+        );
+      } catch (error) {
+        showToast(error.message, true);
+      }
+    });
+  });
+
+  $all("[data-page-editor-delete-error]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        const page = Number(button.dataset.pageEditorDeletePage);
+        const id = String(button.dataset.pageEditorDeleteError || "").trim();
+        if (!Number.isInteger(page) || page < 1 || !id) {
+          return;
+        }
+
+        state.payload = await api("/api/page-errors/delete", {
+          method: "POST",
+          body: JSON.stringify({
+            page,
+            id,
+          }),
+        });
+        render();
+        showToast(t("toast.errorDeleted", { page }));
+      } catch (error) {
+        showToast(error.message, true);
+      }
+    });
+  });
+
+  const stage = modal.querySelector("[data-page-editor-stage='true']");
+  const selectionBox = modal.querySelector("#page-editor-selection-box");
+
+  if (!stage || !selectionBox) {
+    return;
+  }
+
+  if (state.pageEditor.scope === "next-page-link") {
+    selectionBox.classList.remove("active");
+    selectionBox.style.cssText = "";
+    return;
+  }
+
+  const beginSelection = (event) => {
+    if (event.button !== undefined && event.button !== 0) {
+      return;
+    }
+
+    const point = getNormalizedPointerPosition(event, stage);
+    state.pageEditor.selectionOrigin = point;
+    const snapped = snapPageEditorSelection(stage, buildPointRect(point), state.pageEditor.scope);
+    state.pageEditor.rawRect = snapped.rawRect;
+    state.pageEditor.rect = snapped.rect;
+    state.pageEditor.anchor = snapped.anchor;
+    selectionBox.classList.add("active");
+    selectionBox.style.cssText = selectionRectStyle(state.pageEditor.rect);
+    stage.setPointerCapture?.(event.pointerId);
+  };
+
+  const updateSelection = (event) => {
+    if (!state.pageEditor.selectionOrigin) {
+      return;
+    }
+
+    const point = getNormalizedPointerPosition(event, stage);
+    const midpoint = {
+      x: (state.pageEditor.selectionOrigin.x + point.x) / 2,
+      y: (state.pageEditor.selectionOrigin.y + point.y) / 2,
+    };
+    const rawRect = buildNormalizedRectFromPoints(state.pageEditor.selectionOrigin, point) || buildPointRect(midpoint);
+    const snapped = snapPageEditorSelection(stage, rawRect, state.pageEditor.scope);
+    state.pageEditor.rawRect = snapped.rawRect;
+    state.pageEditor.rect = snapped.rect;
+    state.pageEditor.anchor = snapped.anchor;
+    selectionBox.classList.add("active");
+    selectionBox.style.cssText = selectionRectStyle(state.pageEditor.rect);
+  };
+
+  const finishSelection = (event) => {
+    if (!state.pageEditor.selectionOrigin) {
+      return;
+    }
+
+    const point = getNormalizedPointerPosition(event, stage);
+    const midpoint = {
+      x: (state.pageEditor.selectionOrigin.x + point.x) / 2,
+      y: (state.pageEditor.selectionOrigin.y + point.y) / 2,
+    };
+    const rawRect = buildNormalizedRectFromPoints(state.pageEditor.selectionOrigin, point) || buildPointRect(midpoint);
+    const snapped = snapPageEditorSelection(stage, rawRect, state.pageEditor.scope);
+    state.pageEditor.selectionOrigin = null;
+    state.pageEditor.rawRect = snapped.rawRect;
+    state.pageEditor.rect = snapped.rect;
+    state.pageEditor.anchor = snapped.anchor;
+    stage.releasePointerCapture?.(event.pointerId);
+    renderPageEditorModal(state.payload);
+    bindPageEditorActions();
+  };
+
+  stage.addEventListener("pointerdown", beginSelection);
+  stage.addEventListener("pointermove", updateSelection);
+  stage.addEventListener("pointerup", finishSelection);
+  stage.addEventListener("pointercancel", finishSelection);
+}
+
+function bindErrorReviewActions() {
+  $all("[data-review-select-page]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const page = Number(button.dataset.reviewSelectPage);
+      if (!Number.isInteger(page) || page < 1) {
+        return;
+      }
+
+      setReviewSelectedPage(page);
+      setReviewRevealedItemIds([]);
+      resetReviewSwipeState();
+      renderErrorReview(state.payload);
+      bindErrorReviewActions();
+    });
+  });
+
+  $all("[data-review-return-queue]").forEach((button) => {
+    button.addEventListener("click", () => {
+      setReviewSelectedPage(null);
+      setReviewRevealedItemIds([]);
+      resetReviewSwipeState();
+      renderErrorReview(state.payload);
+      bindErrorReviewActions();
+    });
+  });
+
+  $all("[data-review-reveal-next]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const itemId = String(button.dataset.reviewRevealNext || "").trim();
+      if (!itemId) {
+        return;
+      }
+
+      setReviewRevealedItemIds([...getReviewRevealedItemIds(), itemId]);
+      renderErrorReview(state.payload);
+      bindErrorReviewActions();
+    });
+  });
+
+  $all("[data-review-answer]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        const result = String(button.dataset.reviewAnswer || "");
+        const id = String(button.dataset.reviewId || "");
+        if (!id) {
+          return;
+        }
+        const wasSuccess = result === "success";
+        const origin = button.getBoundingClientRect();
+        const beforeDueItems = Array.isArray(state.payload?.errorReview?.dueItems)
+          ? state.payload.errorReview.dueItems.map((item) => normalizeErrorReviewItem(item)).filter(Boolean)
+          : [];
+        const beforeGroups = buildReviewPageGroups(beforeDueItems);
+        const beforeGroup = beforeGroups[0] || null;
+        const beforePage = Number(beforeGroup?.page || 0);
+        const answeredItem = beforeGroup?.items.find((item) => item.id === id) || beforeDueItems.find((item) => item.id === id) || null;
+        setReviewRevealedItemIds(getReviewRevealedItemIds().filter((itemId) => itemId !== id));
+        state.payload = await api("/api/error-review/answer", {
+          method: "POST",
+          body: JSON.stringify({ id, result }),
+        });
+        const afterDueItems = Array.isArray(state.payload?.errorReview?.dueItems)
+          ? state.payload.errorReview.dueItems.map((item) => normalizeErrorReviewItem(item)).filter(Boolean)
+          : [];
+        const afterGroups = buildReviewPageGroups(afterDueItems);
+        const samePageStillDue = afterGroups.some((group) => Number(group.page || 0) === beforePage);
+
+        if (beforePage && samePageStillDue && answeredItem) {
+          setReviewCompletedItemsForPage(beforePage, [...getReviewCompletedItemsForPage(beforePage), answeredItem]);
+        } else if (beforePage) {
+          setReviewCompletedItemsForPage(beforePage, []);
+        }
+
+        render();
+        if (wasSuccess) {
+          launchButtonPulse(origin, "success");
+          if (beforePage && !samePageStillDue) {
+            launchGrandCelebration();
+          }
+          showToast(t("review.successToast", {}, state.payload));
+        } else {
+          launchFailureCelebration(origin);
+          showToast(t("review.failureToast", {}, state.payload), true);
+        }
+      } catch (error) {
+        showToast(error.message, true);
+      }
+    });
+  });
+
+  $all("[data-review-card]").forEach((card) => {
+    let activePointerId = null;
+
+    const resetCard = () => {
+      card.style.transform = "";
+      card.classList.remove("accepting", "rejecting");
+      if (state.reviewSwipe.itemId === String(card.dataset.reviewCard || "").trim()) {
+        resetReviewSwipeState();
+      }
+      if (activePointerId !== null) {
+        card.releasePointerCapture?.(activePointerId);
+        activePointerId = null;
+      }
+    };
+
+    card.addEventListener("pointerdown", (event) => {
+      const reviewCardId = String(card.dataset.reviewCard || "").trim();
+      if (!reviewCardId) {
+        return;
+      }
+
+      if (event.pointerType !== "touch" && event.pointerType !== "pen") {
+        return;
+      }
+
+      state.reviewSwipe.itemId = reviewCardId;
+      state.reviewSwipe.startX = event.clientX;
+      state.reviewSwipe.currentX = event.clientX;
+      activePointerId = event.pointerId;
+      card.setPointerCapture?.(event.pointerId);
+    });
+
+    card.addEventListener("pointermove", (event) => {
+      if (activePointerId === null || event.pointerId !== activePointerId) {
+        return;
+      }
+
+      if (state.reviewSwipe.itemId !== card.dataset.reviewCard) {
+        resetCard();
+        return;
+      }
+
+      state.reviewSwipe.currentX = event.clientX;
+      const deltaX = state.reviewSwipe.currentX - state.reviewSwipe.startX;
+      card.style.transform = `translateX(${deltaX}px) rotate(${deltaX / 28}deg)`;
+      card.classList.toggle("accepting", deltaX > 60);
+      card.classList.toggle("rejecting", deltaX < -60);
+    });
+
+    const finish = async () => {
+      if (activePointerId === null) {
+        resetCard();
+        return;
+      }
+
+      if (state.reviewSwipe.itemId !== card.dataset.reviewCard) {
+        resetCard();
+        return;
+      }
+
+      const deltaX = state.reviewSwipe.currentX - state.reviewSwipe.startX;
+      resetReviewSwipeState();
+      if (activePointerId !== null) {
+        card.releasePointerCapture?.(activePointerId);
+        activePointerId = null;
+      }
+
+      if (deltaX > 110 || deltaX < -110) {
+        const result = deltaX > 0 ? "success" : "failure";
+        const button = card.closest(".review-card-shell")?.querySelector(`[data-review-answer="${result}"]`);
+        if (button) {
+          button.click();
+          return;
+        }
+      }
+
+      resetCard();
+    };
+
+    card.addEventListener("pointerup", finish);
+    card.addEventListener("pointercancel", finish);
+    card.addEventListener("pointerleave", resetCard);
+    card.addEventListener("pointerenter", () => {
+      if (activePointerId === null) {
+        resetCard();
+      }
     });
   });
 }
@@ -2150,18 +5833,24 @@ function bindDynamicActions() {
     });
   });
 
+  bindJuzGroupToggles();
   bindPageQuickActions();
   bindPageCellSelection();
+  bindPageEditorActions();
+  bindErrorReviewActions();
 }
 
 function render() {
-  document.body.classList.toggle("day-complete", Boolean(state.payload?.plan?.canAdvanceDay));
+  document.body.classList.toggle("day-complete", Boolean(state.payload?.plan?.dayClosed));
   localizeStaticUi(state.payload);
   renderHero(state.payload);
   renderSummary(state.payload);
   renderTodayFocus(state.payload);
   renderDayStatus(state.payload);
   renderErrorTracking(state.payload);
+  renderErrorReview(state.payload);
+  renderSurahGame(state.payload);
+  renderPageEditorModal(state.payload);
   renderSettingsPreview(state.payload);
   renderCards(state.payload);
   fillForm(state.payload);
@@ -2180,12 +5869,14 @@ function bindStaticActions() {
           settings: {
             firstName: $("#first-name").value,
             language: $("#language").value,
+            programMode: $("#program-mode").value,
             dailyNewHalfPages: Number($("#daily-new-half-pages").value),
             totalHalfPages: Number($("#total-half-pages").value),
           },
           progress: {
-            currentHalfPage: getCurrentHalfPageFromForm(),
             programDayIndex: Number($("#program-day-index").value),
+            phaseIndex: getSelectedPhaseIndex(state.payload),
+            phaseProgressHalfPages: getPhaseProgressHalfPagesFromForm(),
           },
         }),
       });
@@ -2216,6 +5907,17 @@ function bindStaticActions() {
     }
   });
 
+  $("#skip-memorization-button").addEventListener("click", async () => {
+    try {
+      state.payload = await api("/api/skip-memorization-day", { method: "POST" });
+      render();
+      launchGrandCelebration();
+      showToast(t("toast.skipMemorizationDay"));
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  });
+
   $all("[data-view-target]").forEach((button) => {
     button.addEventListener("click", () => {
       setActiveView(button.dataset.viewTarget);
@@ -2235,14 +5937,167 @@ function bindStaticActions() {
 
   $("#total-half-pages").addEventListener("input", () => {
     syncCurrentPageMax();
+    renderPhaseProgressEditor(state.payload, { preserveDraft: true });
   });
 
   $("#daily-new-half-pages").addEventListener("input", () => {
     syncDailyNewPresets();
   });
 
-  $("#current-page").addEventListener("change", () => {
-    syncCurrentPageMax();
+  $("#program-mode").addEventListener("change", () => {
+    renderPhaseProgressEditor(state.payload, { preserveDraft: true });
+  });
+
+  $("#surah-game").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-surah-game-action]");
+    if (!button) {
+      return;
+    }
+
+    const action = button.dataset.surahGameAction;
+    if (action === "set-play-mode") {
+      resetSurahGame(state.payload, {
+        rangeStartId: state.surahGame.rangeStartId,
+        rangeEndId: state.surahGame.rangeEndId,
+        gameMode: button.dataset.playMode || "quiz",
+        resetStats: true,
+        autoStart: false,
+      });
+      renderSurahGame(state.payload);
+      return;
+    }
+
+    if (action === "start") {
+      startSurahGame(state.payload);
+      renderSurahGame(state.payload);
+      return;
+    }
+
+    if (action === "answer") {
+      const outcome = answerSurahGameQuestion(button.dataset.choiceId);
+      if (outcome?.isCorrect) {
+        launchMiniCelebration(button.getBoundingClientRect());
+        const previousTier = getSurahHeatTier(outcome.previousStreak);
+        const nextTier = getSurahHeatTier(outcome.streak);
+        if (nextTier.min > previousTier.min) {
+          showToast(`🔥 ${t("surahs.milestoneToast", { count: outcome.streak }, state.payload)}`);
+          if (nextTier.min >= 8) {
+            launchGrandCelebration();
+          }
+        }
+      }
+      renderSurahGame(state.payload);
+      return;
+    }
+
+    if (action === "memory-pick") {
+      const outcome = addSurahMemoryChoice(button.dataset.choiceId);
+      if (outcome?.isCorrect) {
+        launchMiniCelebration(button.getBoundingClientRect());
+        const previousTier = getSurahHeatTier(outcome.previousStreak);
+        const nextTier = getSurahHeatTier(outcome.streak);
+        if (nextTier.min > previousTier.min) {
+          showToast(`🔥 ${t("surahs.milestoneToast", { count: outcome.streak }, state.payload)}`);
+          if (nextTier.min >= 8) {
+            launchGrandCelebration();
+          }
+        }
+      }
+      renderSurahGame(state.payload);
+      return;
+    }
+
+    if (action === "memory-remove") {
+      removeSurahMemoryChoice(button.dataset.choiceId);
+      renderSurahGame(state.payload);
+      return;
+    }
+
+    if (action === "memory-clear") {
+      clearSurahMemoryChoices();
+      renderSurahGame(state.payload);
+      return;
+    }
+
+    if (action === "memory-replay") {
+      replaySurahMemoryRound();
+      renderSurahGame(state.payload);
+      return;
+    }
+
+    if (action === "memory-skip-preview") {
+      revealSurahMemoryRound();
+      renderSurahGame(state.payload);
+      return;
+    }
+
+    if (action === "memory-next") {
+      const corpus = ensureSurahGameState(state.payload);
+      state.surahGame.memoryRound = createSurahMemoryRound(corpus);
+      renderSurahGame(state.payload);
+      return;
+    }
+
+    if (action === "next") {
+      const corpus = ensureSurahGameState(state.payload);
+      state.surahGame.question = createSurahGameQuestion(corpus, state.surahGame.question);
+      renderSurahGame(state.payload);
+      return;
+    }
+
+    if (action === "restart") {
+      resetSurahGame(state.payload, {
+        rangeStartId: state.surahGame.rangeStartId,
+        rangeEndId: state.surahGame.rangeEndId,
+        gameMode: state.surahGame.gameMode || "quiz",
+        resetStats: true,
+        autoStart: false,
+      });
+      renderSurahGame(state.payload);
+      return;
+    }
+
+    if (action === "full-range") {
+      resetSurahGame(state.payload, {
+        rangeStartId: 1,
+        rangeEndId: SURAH_PAGE_RANGES.length || 114,
+        gameMode: state.surahGame.gameMode || "quiz",
+        resetStats: true,
+        autoStart: false,
+      });
+      renderSurahGame(state.payload);
+    }
+  });
+
+  $("#surah-game").addEventListener("change", (event) => {
+    const field = event.target.closest("[data-surah-game-select]");
+    if (!field) {
+      return;
+    }
+
+    let startId = state.surahGame.rangeStartId || 1;
+    let endId = state.surahGame.rangeEndId || SURAH_PAGE_RANGES.length || 114;
+
+    if (field.dataset.surahGameSelect === "start") {
+      startId = clampSurahId(field.value, startId);
+      if (startId > endId) {
+        endId = startId;
+      }
+    } else {
+      endId = clampSurahId(field.value, endId);
+      if (endId < startId) {
+        startId = endId;
+      }
+    }
+
+    resetSurahGame(state.payload, {
+      rangeStartId: startId,
+      rangeEndId: endId,
+      gameMode: state.surahGame.gameMode || "quiz",
+      resetStats: true,
+      autoStart: false,
+    });
+    renderSurahGame(state.payload);
   });
 }
 

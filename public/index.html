@@ -35,6 +35,8 @@
         <div class="section-nav">
           <button class="section-tab active" type="button" data-view-target="today" data-i18n="nav.today">Aujourd'hui</button>
           <button class="section-tab" type="button" data-view-target="pages" data-i18n="nav.pages">Pages</button>
+          <button class="section-tab" type="button" data-view-target="review" data-i18n="nav.review">Revoir ses erreurs</button>
+          <button class="section-tab" type="button" data-view-target="surahs" data-i18n="nav.surahs">Mini jeu</button>
           <button class="section-tab" type="button" data-view-target="settings" data-i18n="nav.settings">Parametres</button>
         </div>
       </section>
@@ -53,6 +55,7 @@
               <div id="day-status" class="day-status"></div>
               <div class="action-stack">
                 <button id="reset-button" class="secondary-button" type="button" data-i18n="today.resetButton">Reinitialiser les validations du jour</button>
+                <button id="skip-memorization-button" class="secondary-button skip-day-button" type="button" data-i18n="today.skipMemorizationButton">Ne rien memoriser aujourd'hui</button>
                 <button id="advance-button" class="primary-button" type="button" data-i18n="today.advanceButton">Valider la journee et passer au lendemain</button>
               </div>
             </aside>
@@ -120,64 +123,68 @@
             </div>
             <div class="pages-workspace">
               <div class="pages-top-shelf">
-                <section class="pages-section pages-overview-section">
+                <section class="pages-section pages-insights-section">
                   <div class="pages-section-head">
                     <div>
-                      <p class="eyebrow" data-i18n="pages.summaryLabel">Synthese</p>
-                      <h3 data-i18n="pages.summaryTitle">Etat De La Carte</h3>
+                      <p class="eyebrow" data-i18n="pages.insightsLabel">Lecture</p>
+                      <h3 data-i18n="pages.insightsTitle">Etat Et Lecture De La Carte</h3>
                     </div>
-                    <p class="helper" data-i18n="pages.quickHelp">
-                      Clique une page dans la grille pour ouvrir ses actions rapides, puis choisis directement
-                      Mineur, Moyenne, Grave ou Effacer.
-                    </p>
+                    <p class="helper" data-i18n="pages.insightsHelp">Lis la carte d'un coup d'oeil, puis clique une page pour ouvrir ses actions a droite.</p>
                   </div>
-                  <div id="error-summary" class="error-summary-grid"></div>
-                </section>
-
-                <section class="pages-section pages-reading-section">
-                  <div class="pages-section-head">
-                    <div>
-                      <p class="eyebrow" data-i18n="pages.legendLabel">Lecture</p>
-                      <h3 data-i18n="pages.legendTitle">Lire La Carte</h3>
+                  <div class="pages-insights-grid">
+                    <div class="pages-insight-column">
+                      <div class="pages-inline-labels">
+                        <p class="eyebrow" data-i18n="pages.summaryLabel">Synthese</p>
+                        <p class="helper" data-i18n="pages.quickHelp">
+                          Clique une page dans la grille pour ouvrir ses actions rapides, puis choisis directement
+                          Mineur, Moyenne, Grave ou Effacer.
+                        </p>
+                      </div>
+                      <div id="error-summary" class="error-summary-grid"></div>
                     </div>
-                    <p class="helper" data-i18n="pages.definitionsHelp">Les zones du programme sont visibles directement au-dessus de la carte.</p>
-                  </div>
-                  <div class="legend-grid legend-inline-grid">
-                    <article class="legend-chip">
-                      <span class="severity-dot none"></span>
-                      <div>
-                        <strong data-i18n="legend.noneTitle">Neutre</strong>
-                        <p class="helper" data-i18n="legend.noneHelp">Aucune erreur enregistree.</p>
+                    <div class="pages-insight-column">
+                      <div class="pages-inline-labels">
+                        <p class="eyebrow" data-i18n="pages.legendLabel">Lecture</p>
+                        <p class="helper" data-i18n="pages.definitionsHelp">Les zones du programme sont visibles directement au-dessus de la carte.</p>
                       </div>
-                    </article>
-                    <article class="legend-chip">
-                      <span class="severity-dot minor"></span>
-                      <div>
-                        <strong data-i18n="legend.minorTitle">Mineur</strong>
-                        <p class="helper" data-i18n="legend.minorHelp">Voyelle ou petite correction locale.</p>
+                      <div class="legend-grid legend-inline-grid legend-compact-grid">
+                        <article class="legend-chip compact">
+                          <span class="severity-dot none"></span>
+                          <div>
+                            <strong data-i18n="legend.noneTitle">Neutre</strong>
+                            <p class="helper" data-i18n="legend.noneHelp">Aucune erreur enregistree.</p>
+                          </div>
+                        </article>
+                        <article class="legend-chip compact">
+                          <span class="severity-dot minor"></span>
+                          <div>
+                            <strong data-i18n="legend.minorTitle">Mineur</strong>
+                            <p class="helper" data-i18n="legend.minorHelp">Voyelle ou petite correction locale.</p>
+                          </div>
+                        </article>
+                        <article class="legend-chip compact">
+                          <span class="severity-dot medium"></span>
+                          <div>
+                            <strong data-i18n="legend.mediumTitle">Moyenne</strong>
+                            <p class="helper" data-i18n="legend.mediumHelp">Erreur dans un mot ou hesitation plus nette.</p>
+                          </div>
+                        </article>
+                        <article class="legend-chip compact">
+                          <span class="severity-dot grave"></span>
+                          <div>
+                            <strong data-i18n="legend.graveTitle">Grave</strong>
+                            <p class="helper" data-i18n="legend.graveHelp">Oubli, blocage ou cassure majeure.</p>
+                          </div>
+                        </article>
+                        <article class="legend-chip compact">
+                          <span class="severity-dot learned"></span>
+                          <div>
+                            <strong data-i18n="legend.learnedTitle">Apprise</strong>
+                            <p class="helper" data-i18n="legend.learnedHelp">Page deja memorisee, visible meme sans erreur.</p>
+                          </div>
+                        </article>
                       </div>
-                    </article>
-                    <article class="legend-chip">
-                      <span class="severity-dot medium"></span>
-                      <div>
-                        <strong data-i18n="legend.mediumTitle">Moyenne</strong>
-                        <p class="helper" data-i18n="legend.mediumHelp">Erreur dans un mot ou hesitation plus nette.</p>
-                      </div>
-                    </article>
-                    <article class="legend-chip">
-                      <span class="severity-dot grave"></span>
-                      <div>
-                        <strong data-i18n="legend.graveTitle">Grave</strong>
-                        <p class="helper" data-i18n="legend.graveHelp">Oubli, blocage ou cassure majeure.</p>
-                      </div>
-                    </article>
-                    <article class="legend-chip">
-                      <span class="severity-dot learned"></span>
-                      <div>
-                        <strong data-i18n="legend.learnedTitle">Apprise</strong>
-                        <p class="helper" data-i18n="legend.learnedHelp">Page deja memorisee, visible meme sans erreur.</p>
-                      </div>
-                    </article>
+                    </div>
                   </div>
                 </section>
               </div>
@@ -201,10 +208,22 @@
                   <div id="program-legend" class="program-legend-grid"></div>
                 </div>
                 <div class="page-grid-frame">
-                  <div id="error-grid" class="page-grid"></div>
+                  <div id="error-grid" class="page-grid-list"></div>
                 </div>
               </section>
             </div>
+          </section>
+        </section>
+
+        <section id="view-surahs" class="content-view">
+          <section class="panel surah-game-panel">
+            <div id="surah-game"></div>
+          </section>
+        </section>
+
+        <section id="view-review" class="content-view">
+          <section class="panel review-errors-panel">
+            <div id="error-review"></div>
           </section>
         </section>
 
@@ -253,17 +272,16 @@
                   </div>
                   <p class="helper" data-i18n="settings.progressHelp">Indique la page et la moitie a partir desquelles le plan doit repartir.</p>
                   <div class="form-grid setup-grid">
-                    <label>
-                      <span data-i18n="settings.currentPageLabel">Page actuelle</span>
-                      <input id="current-page" type="number" min="1" />
-                    </label>
-                    <label>
-                      <span data-i18n="settings.currentHalfLabel">Moitie actuelle</span>
-                      <select id="current-half">
-                        <option value="haute" data-i18n-option="settings.upperHalfOption">Haute</option>
-                        <option value="basse" data-i18n-option="settings.lowerHalfOption">Basse</option>
+                    <label class="full">
+                      <span data-i18n="settings.programModeLabel">Parcours</span>
+                      <select id="program-mode">
+                        <option value="forward" data-i18n-option="settings.programModeForwardOption">Debut -> fin</option>
+                        <option value="reverse" data-i18n-option="settings.programModeReverseOption">Fin -> debut</option>
+                        <option value="reverse-forward" data-i18n-option="settings.programModeReverseForwardOption">Fin -> debut puis debut -> fin</option>
                       </select>
                     </label>
+                    <div id="phase-progress-grid" class="phase-progress-grid full"></div>
+                    <input id="phase-index" type="hidden" value="1" />
                     <label class="full">
                       <span data-i18n="settings.programDayLabel">Jour du programme</span>
                       <input id="program-day-index" type="number" min="1" />
@@ -316,9 +334,10 @@
       </div>
     </div>
 
-    <aside id="page-quick-actions" class="page-quick-actions"></aside>
+    <div id="page-editor-modal" class="page-editor-modal" hidden></div>
     <div id="celebration-layer" class="celebration-layer" aria-hidden="true"></div>
     <div id="toast" class="toast" aria-live="polite"></div>
+    <script src="/surah-pages.js" defer></script>
     <script src="/app.js" defer></script>
   </body>
 </html>

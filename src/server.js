@@ -111,13 +111,29 @@ async function handleApi(req, res, url) {
 
   if (req.method === "POST" && pathname === "/api/page-errors") {
     const body = await parseBody(req);
-    sendJson(res, 200, store.setPageError(body.pages || body.page, String(body.severity || ""), body.note || ""));
+    sendJson(
+      res,
+      200,
+      store.setPageError(body.pages || body.page, {
+        severity: String(body.severity || ""),
+        scope: String(body.scope || ""),
+        rect: body.rect || null,
+        anchor: body.anchor || null,
+        note: body.note || "",
+      }),
+    );
     return true;
   }
 
   if (req.method === "POST" && pathname === "/api/page-errors/clear") {
     const body = await parseBody(req);
     sendJson(res, 200, store.clearPageError(body.pages || body.page));
+    return true;
+  }
+
+  if (req.method === "POST" && pathname === "/api/page-errors/delete") {
+    const body = await parseBody(req);
+    sendJson(res, 200, store.removePageErrorItem(body.pages || body.page, body.id));
     return true;
   }
 
@@ -134,6 +150,17 @@ async function handleApi(req, res, url) {
 
   if (req.method === "POST" && pathname === "/api/advance-day") {
     sendJson(res, 200, store.advanceDay());
+    return true;
+  }
+
+  if (req.method === "POST" && pathname === "/api/skip-memorization-day") {
+    sendJson(res, 200, store.skipMemorizationDay());
+    return true;
+  }
+
+  if (req.method === "POST" && pathname === "/api/error-review/answer") {
+    const body = await parseBody(req);
+    sendJson(res, 200, store.answerErrorReview(body.id, String(body.result || "")));
     return true;
   }
 

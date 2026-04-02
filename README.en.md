@@ -4,20 +4,38 @@ French version: [README.md](README.md)
 
 Local daily monitoring app for hifz.
 
-It does not try to teach for you. It simply calculates what must be recited today from the current program position, in this strict order:
+It does not memorize for you. It structures the day, tracks progress, lets you place mistakes on real Madinah mushaf pages, and then brings those mistakes back with spaced repetition.
 
-1. `Old`
-2. `Consolidation`
-3. `Recent`
-4. `Yesterday`
-5. `New`
+## What the app handles
 
-The `New` block contains `3 waves`, with `3 checks` per wave.
+- strict daily order:
+  1. `Old`
+  2. `Consolidation`
+  3. `Recent`
+  4. `Yesterday`
+  5. `New`
+- `New` block split into `3 waves` with `3 checks` each
+- configurable program paths:
+  1. `Start -> end`
+  2. `End -> start`
+  3. `End -> start then start -> end`
+- dual-pass progress with separate counters per phase
+- day closure without new memorization through `Do not memorize anything today`
+- Quran page map grouped by `juz`, collapsible, with states, surah names, and program zones
+- `real page` editor to place mistakes precisely on Madinah mushaf pages
+- error types: `Harakahs`, `Word`, `Whole line`, `Next page link`
+- error review powered by `FSRS`, with progressive reveal and a full fragile-page library
+- surah order mini-game with:
+  - `Before / after` mode
+  - `Memorize 7 surahs` mode
+  - streaks, flame tiers, milestones, and configurable surah ranges
 
 ## Required inputs
 
 - `Current page`
 - `Current half`
+- `Program path`
+- `Current phase`
 - `New / day (in half-pages)`
 - `Program day`
 - `Total half-pages`
@@ -25,12 +43,14 @@ The `New` block contains `3 waves`, with `3 checks` per wave.
 
 ## What the app shows
 
-- today's `Old` block, with automatic rotation across `7 parts`
-- `J-8 -> J-30` consolidation, split into `3 parts`
+- today's `Old` block with automatic rotation across `7 parts`
+- `J-8 -> J-30` consolidation split into `3 parts`
 - the `J-1 -> J-7` recent block
 - the `Yesterday` block (`J-1`)
 - today's `New` block with its `9 checks`
-- a compact Quran page map with program markers and error tracking
+- a compact Quran page map grouped by `juz`
+- surah names and program markers directly inside the grid
+- focused error review with masks and spaced repetition
 
 ## Screenshots
 
@@ -41,6 +61,14 @@ The `New` block contains `3 waves`, with `3 checks` per wave.
 ### Pages View
 
 ![Pages View](docs/screenshots-en/pages-view-en.png)
+
+### Review Errors View
+
+![Review Errors View](docs/screenshots-en/review-view-en.png)
+
+### Mini Game View
+
+![Mini Game View](docs/screenshots-en/minigame-view-en.png)
 
 ### Settings View
 
@@ -60,4 +88,4 @@ Local state is stored in:
 
 - `data/state.json`
 
-There is no SQL database and no external engine: just a strict, local, readable daily monitoring board.
+There is no SQL database and no external engine: just a local, readable workflow built for a daily hifz routine.
