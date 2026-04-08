@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Dabt</string>
+    <string name="title_activity_main">Dabt</string>
+    <string name="package_name">com.dabt.app</string>
+    <string name="custom_url_scheme">com.dabt.app</string>
+</resources>

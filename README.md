@@ -82,6 +82,51 @@ node src/server.js
 
 Puis ouvre [http://127.0.0.1:3100](http://127.0.0.1:3100).
 
+## Mobile avec Capacitor
+
+Le socle Capacitor est en place avec :
+
+- config racine : `capacitor.config.json`
+- projet Android natif : `android/`
+- web embarque depuis : `public/`
+
+L'app mobile s'appuie sur `public/browser-local-api.js`, donc elle peut continuer a utiliser les routes `/api/*` sans lancer un serveur Node dans le natif.
+
+Commandes utiles :
+
+```powershell
+npm run cap:sync
+npm run build:android-assets
+npm run android:assemble:debug
+npm run android:assemble:release
+npm run android:bundle:release
+npm run android:keystore:generate
+npm run android:devices
+npm run android:install:debug
+npm run android:studio
+npm run cap:open:android
+npm run cap:run:android
+```
+
+Prerequis Android :
+
+- Android Studio
+- JDK 21 pour cette stack Capacitor
+
+Le projet peut aussi compiler en local avec la JDK 21 et le SDK Android installes dans le dossier du projet :
+
+```powershell
+npm run android:assemble:debug
+```
+
+Pour preparer une vraie signature release :
+
+1. Lance `npm run android:keystore:generate`
+2. Cela cree un keystore local dans `.keystore/` et un fichier `android/keystore.properties`
+3. Ensuite tu peux lancer `npm run android:assemble:release` ou `npm run android:bundle:release`
+
+Pour iOS, il faudra lancer la suite sur macOS, puis ajouter la plateforme avec `@capacitor/ios` et `npx cap add ios`.
+
 ## Stockage
 
 L'etat local est garde dans :

@@ -2,10 +2,18 @@ const state = {
   payload: null,
   activePage: null,
   activeView: "today",
+  activeViewRenderToken: 0,
   quickNoteDrafts: {},
   expandedCards: {},
   collapsedJuzs: {},
   mushafPageCache: {},
+  errorTrackingRenderCache: {
+    pageErrorsRef: null,
+    summaryRef: null,
+    planRef: null,
+    language: "",
+    collapsedKey: "",
+  },
   reviewState: {
     revealedItemIds: [],
     completedItemsByPage: {},
@@ -20,6 +28,7 @@ const state = {
     rect: null,
     anchor: null,
     selectionOrigin: null,
+    needsTrackingRefresh: false,
   },
   reviewSwipe: {
     itemId: "",
@@ -39,7 +48,40 @@ const state = {
     question: null,
     memoryRound: null,
   },
+  pwa: {
+    installPrompt: null,
+    canInstall: false,
+  },
+  notificationsRuntime: {
+    supported: false,
+    native: false,
+    display: "prompt",
+    exactAlarm: "prompt",
+    pendingCount: 0,
+    synced: false,
+    scheduledCount: 0,
+    reason: "unsupported",
+  },
+  onboarding: {
+    open: false,
+    stepIndex: 0,
+    hasSeen: false,
+  },
+  lastLocalizedLanguage: "",
 };
+const dataClient = window.dabtDataClient;
+const MUSHAF_TOTAL_PAGES = 604;
+const PROGRESS_UNITS_PER_PAGE = 30;
+const LINES_PER_PAGE = 15;
+const MUSHAF_TOTAL_HALF_PAGES = MUSHAF_TOTAL_PAGES * PROGRESS_UNITS_PER_PAGE;
+const SERVICE_WORKER_VERSION = "2026-04-03-2";
+const TOUCH_SELECTION_LONG_PRESS_MS = 320;
+const TOUCH_SELECTION_MOVE_PX = 12;
+let mushafSurfacesRenderQueued = false;
+
+function getOnboardingStorageKey() {
+  return isNativeAppRuntime() ? "dabt-mobile-onboarding-native-v1" : "dabt-mobile-onboarding-web-v1";
+}
 
 const MUSHAF_PAGE_IMAGE_BASE = "https://www.ahadees.com/images/quran/pages";
 const MUSHAF_API_BASE = "https://api.quran.com/api/v4";
@@ -129,24 +171,45 @@ let surahGamePreviewTimer = null;
 const I18N = {
   fr: {
     "hero.title": "Bismillah, voici ton plan du jour{{name}} !✨",
-    "hero.text": "Retrouve ici uniquement ce qu'il faut reciter aujourd'hui, dans l'ordre exact du programme.",
-    "hero.markerLabel": "Repere",
+    "hero.text": "Retrouve ici [[uniquement]] ce qu'il faut réciter [[aujourd'hui]], dans l'[[ordre exact]] du programme.",
+    "hero.markerLabel": "Repère",
+    "hero.installApp": "Installer Dabt",
     "hero.markerText":
-      "Le but est de cloturer la revision de l'ancien (< j-30) tout les 7 jours, la consolidation (de j-8 a j-30) tout les 3 jours puis de reviser le recent (de j-1 a j-7) puis de reviser la veille (j-1) et enfin apprendre le nouveau.",
+      "Le but est de [[clôturer]] la révision de l'ancien (< J-30) tous les 7 jours, la consolidation (de J-8 à J-30) tous les 3 jours, puis de réviser le récent (de J-1 à J-7), puis la veille (J-1), avant d'apprendre le [[nouveau]].",
     "nav.today": "Aujourd'hui",
     "nav.pages": "Pages",
     "nav.review": "Revoir ses erreurs",
     "nav.surahs": "Mini jeu",
-    "nav.settings": "Parametres",
-    "today.dayLabel": "Journee",
-    "today.validationTitle": "Etat De Validation",
+    "nav.settings": "Paramètres",
+    "onboarding.skip": "Passer",
+    "onboarding.next": "Suivant",
+    "onboarding.start": "Commencer",
+    "onboarding.step": "Écran {{current}} sur {{total}}",
+    "onboarding.today.title": "La section Aujourd'hui te guide bloc par bloc",
+    "onboarding.today.body": "La section Aujourd'hui organise ta journee: quoi reciter maintenant, dans quel ordre avancer, puis comment valider chaque bloc au bon moment.",
+    "onboarding.pages.title": "La section Pages te montre le mushaf d'un seul coup d'oeil",
+    "onboarding.pages.body": "La section Pages te permet d'ouvrir la vraie page du Coran, placer une erreur precise et suivre ton etat page par page, puis juz par juz.",
+    "onboarding.review.title": "La section Revoir ses erreurs retravaille les zones fragiles",
+    "onboarding.review.body": "La section Revoir ses erreurs utilise FSRS pour faire revenir chaque erreur au meilleur moment selon tes reponses, directement sur la page du Coran.",
+    "onboarding.surahs.title": "La section Mini jeu consolide l'ordre des sourates",
+    "onboarding.surahs.body": "La section Mini jeu te propose deux facons de t'entrainer: retrouver la sourate suivante ou remettre une serie dans le bon ordre.",
+    "onboarding.today.title": "Aujourd'hui te guide bloc par bloc",
+    "onboarding.today.body": "Aujourd'hui applique une methodologie de repetition espacee: tout est remis dans le bon ordre pour revoir au bon moment, du plus ancien au plus recent, puis apprendre le nouveau.",
+    "onboarding.pages.title": "Pages te montre le mushaf d'un seul coup d'oeil",
+    "onboarding.pages.body": "Chaque page garde son etat. Tu peux ouvrir la vraie page du Coran, placer une erreur precise et suivre ton avancée juz par juz.",
+    "onboarding.review.title": "Revoir ses erreurs replante les zones fragiles",
+    "onboarding.review.body": "Revoir ses erreurs utilise FSRS, un systeme de repetition espacee base sur la science, pour faire revenir chaque erreur au meilleur moment selon tes reponses.",
+    "onboarding.surahs.title": "Mini jeu consolide l'ordre des sourates",
+    "onboarding.surahs.body": "Deux modes de jeu pour apprendre plus vite: retrouver la sourate suivante ou remettre une serie dans le bon ordre.",
+    "today.dayLabel": "Journée",
+    "today.validationTitle": "État de validation",
     "today.validationHelp": "Valide les blocs dans l'ordre, puis passe au lendemain.",
-    "today.resetButton": "Reinitialiser les validations du jour",
-    "today.skipMemorizationButton": "Ne rien memoriser aujourd'hui",
-    "today.advanceButton": "Valider la journee et passer au lendemain",
+    "today.resetButton": "Réinitialiser les validations du jour",
+    "today.skipMemorizationButton": "Ne rien mémoriser aujourd'hui",
+    "today.advanceButton": "Valider la journée et passer au lendemain",
     "today.focusLabel": "Maintenant",
     "today.focusTitle": "Ce que tu fais maintenant",
-    "today.focusHelp": "Le bloc actif passe devant. Tout le reste reste visible, mais secondaire.",
+    "today.focusHelp": "Le [[bloc actif]] passe devant. Tout le reste reste visible, mais secondaire.",
     "today.focusReady": "Bloc en focus",
     "today.focusDoneTitle": "La journee est prete a etre cloturee",
     "today.focusDoneHelp": "Tous les blocs du jour sont valides. Tu peux passer au lendemain.",
@@ -157,38 +220,38 @@ const I18N = {
     "today.focusUndo": "Retirer la validation",
     "today.focusOpenNew": "Ouvrir les vagues du nouveau",
     "today.focusScroll": "Aller au detail du bloc",
-    "today.routeLabel": "Ordre Du Jour",
-    "today.routeTitle": "Chemin De Recitation",
-    "today.routeHelp": "Toujours du plus ancien vers le plus neuf, sans melanger les niveaux.",
+    "today.routeLabel": "Ordre du jour",
+    "today.routeTitle": "Chemin de [[récitation]]",
+    "today.routeHelp": "Toujours du [[plus ancien]] vers le [[plus neuf]], sans mélanger les niveaux.",
     "route.oldTitle": "Ancien",
-    "route.oldHelp": "Pool complet avant J-30, decoupe en 7 parties visibles.",
+    "route.oldHelp": "Pool complet avant [[J-30]], découpé en 7 parties visibles.",
     "route.consolidationTitle": "Consolidation",
-    "route.consolidationHelp": "Revision des 30 derniers jours, sur la tranche J-8 a J-30.",
-    "route.recentTitle": "Recent",
-    "route.recentHelp": "Bloc continu J-1 a J-7 pour garder le fragile tres proche.",
+    "route.consolidationHelp": "Révision des 30 derniers jours, sur la tranche [[J-8 à J-30]].",
+    "route.recentTitle": "Récent",
+    "route.recentHelp": "Bloc continu [[J-1 à J-7]] pour garder le fragile très proche.",
     "route.yesterdayTitle": "Veille",
-    "route.yesterdayHelp": "Le bloc d'hier isole, pour verifier le passage immediat.",
+    "route.yesterdayHelp": "Le bloc d'hier isolé, pour vérifier le passage immédiat.",
     "route.newTitle": "Nouveau",
-    "route.newHelp": "Le bloc du jour, avec 3 vagues et 9 validations au total.",
-    "pages.eyebrow": "Suivi Des Erreurs",
-    "pages.title": "Carte Des Pages",
+    "route.newHelp": "Le bloc du jour, avec [[3 vagues]] et [[9 validations]] au total.",
+    "pages.eyebrow": "Suivi des erreurs",
+    "pages.title": "Carte des [[pages]]",
     "pages.help":
-      "Renseigne une page apres une recitation, puis visualise a la fois les zones fragiles et les reperes du programme du jour sur tout le mushaf.",
+      "Renseigne une page après une récitation, puis visualise à la fois les [[zones fragiles]] et les [[repères du programme]] du jour sur tout le mushaf.",
     "pages.quickLabel": "Saisie Rapide",
     "pages.quickTitle": "Une page, un clic, une erreur",
     "pages.quickHelp":
-      "Clique une page dans la grille, ouvre la vraie page du mushaf, puis encadre la zone exacte de l'erreur.",
+      "Clique une page dans la grille, ouvre la vraie page du mushaf, puis encadre la [[zone exacte]] de l'erreur.",
     "pages.insightsLabel": "Lecture",
-    "pages.insightsTitle": "Etat Et Lecture De La Carte",
-    "pages.insightsHelp": "Lis les etats d'un coup d'oeil, puis clique une page pour ouvrir la vraie page du mushaf.",
-    "pages.summaryLabel": "Synthese",
-    "pages.summaryTitle": "Etat De La Carte",
+    "pages.insightsTitle": "État et lecture de la carte",
+    "pages.insightsHelp": "Lis les états d'un coup d'œil, puis clique une page pour ouvrir la vraie page du mushaf.",
+    "pages.summaryLabel": "Synthèse",
+    "pages.summaryTitle": "État de la carte",
     "pages.legendLabel": "Lecture",
-    "pages.legendTitle": "Lire La Carte",
+    "pages.legendTitle": "Lire la carte",
     "pages.mapLabel": "Mushaf",
-    "pages.mapTitle": "Representation Du Coran",
-    "pages.mapHelp": "Clique une page pour ouvrir la vraie page du mushaf et placer ta zone d'erreur.",
-    "pages.definitionsLabel": "Definitions",
+    "pages.mapTitle": "Représentation du Coran",
+    "pages.mapHelp": "Clique une page pour ouvrir la vraie page du mushaf et placer ta [[zone d'erreur]].",
+    "pages.definitionsLabel": "Définitions",
     "pages.definitionsHelp": "Les zones du programme sont visibles directement au-dessus de la carte.",
     "pages.juzLabel": "Juz {{number}}",
     "pages.juzPages": "Pages {{start}}-{{end}}",
@@ -196,47 +259,47 @@ const I18N = {
     "pages.juzErrorCount": "{{count}} fragile(s)",
     "pages.juzLearnedCount": "{{count}} apprise(s)",
     "pages.juzExpand": "Ouvrir",
-    "pages.juzCollapse": "Reduire",
-    "review.eyebrow": "Repetition Espacee",
-    "review.title": "Revoir ses erreurs",
-    "review.help": "Chaque carte reprend une erreur precise, masque la zone fautive et la repropose selon son prochain rappel.",
-    "review.dueNow": "A revoir maintenant",
-    "review.upcoming": "A venir",
+    "pages.juzCollapse": "Réduire",
+    "review.eyebrow": "Répétition espacée",
+    "review.title": "Revoir ses [[erreurs]]",
+    "review.help": "Chaque carte reprend une [[erreur précise]], masque la zone fautive et la repropose selon son [[prochain rappel]].",
+    "review.dueNow": "À revoir maintenant",
+    "review.upcoming": "À venir",
     "review.mastered": "Stables",
-    "review.libraryLabel": "Bibliotheque",
+    "review.libraryLabel": "Bibliothèque",
     "review.libraryTitle": "Toutes les pages avec erreurs",
     "review.libraryHelp": "Clique une page pour la consulter librement sans perdre la file des cartes dues.",
-    "review.returnToQueue": "Revenir a la file",
-    "review.status.due": "A revoir",
+    "review.returnToQueue": "Revenir à la file",
+    "review.status.due": "À revoir",
     "review.status.upcoming": "Plus tard",
     "review.status.mastered": "Stable",
-    "review.selectedLabel": "Page selectionnee",
-    "review.browseHelp": "Cette page n'est pas due maintenant. Toutes ses erreurs sont visibles pour une revision libre.",
+    "review.selectedLabel": "Page sélectionnée",
+    "review.browseHelp": "Cette page n'est pas due maintenant. Toutes ses erreurs sont visibles pour une révision libre.",
     "review.browseListLabel": "Erreurs visibles sur cette page",
-    "review.emptyTitle": "Aucune erreur detaillee a revoir.",
+    "review.emptyTitle": "Aucune erreur détaillée à revoir.",
     "review.emptyHelp": "Ajoute d'abord une erreur depuis une vraie page du mushaf pour lancer ce mode.",
     "review.emptyUpcoming": "Aucune carte n'est due pour l'instant. Reviens plus tard ou ajoute une nouvelle erreur.",
     "review.nextDue": "Prochain rappel",
     "review.cardLabel": "Carte {{current}} sur {{total}}",
     "review.pageLabel": "Page {{page}}",
     "review.pageErrorCount": "{{count}} erreur(s) sur cette page",
-    "review.revealProgress": "{{count}} / {{total}} erreurs devoilees",
-    "review.revealNextHelp": "Clique sur Verifier pour devoiler l'erreur suivante sur cette meme page.",
-    "review.revealDoneHelp": "Toutes les erreurs de la page sont revelees. Note-les maintenant une par une.",
-    "review.revealDoneButton": "Tout est devoile",
+    "review.revealProgress": "{{count}} / {{total}} erreurs dévoilées",
+    "review.revealNextHelp": "Clique sur Vérifier pour dévoiler l'erreur suivante sur cette même page.",
+    "review.revealDoneHelp": "Toutes les erreurs de la page sont dévoilées. Note-les maintenant une par une.",
+    "review.revealDoneButton": "Tout est dévoilé",
     "review.answerCurrentHelp": "Tu peux noter cette erreur maintenant, puis cliquer sur Verifier pour la suivante.",
-    "review.nextPagePeek": "Debut page {{page}}",
+    "review.nextPagePeek": "Début page {{page}}",
     "review.scopeLabel": "Type",
     "review.noteLabel": "Note",
     "review.noteEmpty": "Sans note",
-    "review.swipeHelp": "Glisse a droite si tu as eu bon, a gauche si tu t'es trompe.",
-    "review.revealHelp": "Retire d'abord le masque pour verifier si tu avais bien retrouve l'endroit.",
-    "review.revealButton": "Verifier",
+    "review.swipeHelp": "Glisse à droite si tu as eu bon, à gauche si tu t'es trompé.",
+    "review.revealHelp": "Retire d'abord le masque pour vérifier si tu avais bien retrouvé l'endroit.",
+    "review.revealButton": "Vérifier",
     "review.hideButton": "Remettre le masque",
     "review.successButton": "Bon",
-    "review.failureButton": "Rate",
-    "review.successToast": "Erreur revue avec succes.",
-    "review.failureToast": "Erreur a revoir plus vite.",
+    "review.failureButton": "Raté",
+    "review.successToast": "Erreur revue avec succès.",
+    "review.failureToast": "Erreur à revoir plus vite.",
     "review.mask.harakah": "",
     "review.mask.word": "",
     "review.mask.line": "",
@@ -256,6 +319,7 @@ const I18N = {
     "editor.selectionReady": "Zone selectionnee. Tu peux enregistrer cette erreur.",
     "editor.selectionAutoLink": "Aucune zone a tracer : cette erreur ouvrira automatiquement les 3 premieres lignes de la page suivante.",
     "editor.selectionAutoLinkUsed": "Une liaison avec la page suivante existe deja sur cette page.",
+    "editor.touchSelectionHint": "Sur mobile, fais un appui long sur la page pour commencer la selection. Sinon le geste fait simplement defiler le menu.",
     "editor.save": "Enregistrer l'erreur",
     "editor.cancel": "Fermer",
     "editor.clearSelection": "Effacer la zone",
@@ -264,20 +328,22 @@ const I18N = {
     "editor.recentEmpty": "Aucune erreur detaillee sur cette page pour l'instant.",
     "editor.openFromInspector": "Ajouter une erreur precise",
     "surahs.eyebrow": "Ordre des sourates",
-    "surahs.title": "Mini jeu",
+    "surahs.title": "Mini [[jeu]]",
     "surahs.help":
-      "Travaille l'enchainement des sourates avec des questions avant / apres, en choisissant la plage exacte que tu veux renforcer.",
+      "Travaille l'[[enchaînement des sourates]] avec des questions avant / après, en choisissant la [[plage exacte]] que tu veux renforcer.",
     "surahs.playModeLabel": "Mode de jeu",
     "surahs.playModeQuiz": "Avant / apres",
     "surahs.playModeQuizHint": "Reponds a des questions rapides sur la sourate juste avant ou juste apres.",
-    "surahs.playModeMemory": "Memo 7 sourates",
+    "surahs.playModeMemory": "Mémo 7 sourates",
     "surahs.playModeMemoryHint": "Observe 7 sourates pendant 1 min, puis remets-les dans le bon ordre.",
     "surahs.playButton": "Jouer",
     "surahs.readyTitle": "La partie est prete",
     "surahs.readyHelpQuiz": "Choisis ton mode et ta plage, puis clique sur Jouer pour lancer la premiere question.",
     "surahs.readyHelpMemory": "Choisis ta plage, puis clique sur Jouer pour afficher les 7 sourates a memoriser.",
+    "surahs.settingsCompactLabel": "Réglages",
+    "surahs.settingsToggle": "Mode et plage de jeu",
     "surahs.rangeLabel": "Plage de jeu",
-    "surahs.rangeHint": "Choisis une portion continue de sourates pour te concentrer sur un ordre precis.",
+    "surahs.rangeHint": "Choisis une portion continue de sourates pour te concentrer sur un ordre précis.",
     "surahs.rangeFrom": "De",
     "surahs.rangeTo": "A",
     "surahs.rangeQuickAll": "Tout le Coran",
@@ -291,7 +357,7 @@ const I18N = {
     "surahs.statsAnswered": "Questions faites",
     "surahs.statsStreak": "Serie en cours",
     "surahs.statsBestStreak": "Meilleure serie",
-    "surahs.statsAccuracy": "Precision",
+    "surahs.statsAccuracy": "Précision",
     "surahs.heatLabel": "Chaleur",
     "surahs.heatCalm": "Echauffement",
     "surahs.heatWarm": "Ça chauffe",
@@ -347,95 +413,98 @@ const I18N = {
     "legend.graveHelp": "Oubli, blocage ou cassure majeure.",
     "legend.learnedTitle": "Apprise",
     "legend.learnedHelp": "Page deja memorisee, visible meme sans erreur.",
-    "settings.eyebrow": "Reglages",
-    "settings.title": "Parametres",
-    "settings.help": "Ajuste ton point de depart et ton rythme, puis laisse le plan se recalculer.",
-    "settings.firstNameLabel": "Prenom",
-    "settings.firstNamePlaceholder": "Ton prenom",
+    "settings.eyebrow": "Réglages",
+    "settings.title": "[[Paramètres]]",
+    "settings.help": "Ajuste ton [[point de départ]] et ton [[rythme]], puis laisse le plan se [[recalculer]].",
+    "settings.firstNameLabel": "Prénom",
+    "settings.firstNamePlaceholder": "Ton prénom",
     "settings.languageLabel": "Langue",
-    "settings.languageFrenchOption": "Francais",
+    "settings.languageFrenchOption": "Français",
     "settings.languageEnglishOption": "English",
-    "settings.identityLabel": "Identite",
+    "settings.languageArabicOption": "Arabe",
+    "settings.identityLabel": "Identité",
     "settings.identityTitle": "Qui apprend ?",
-    "settings.identityHelp": "Renseigne juste le prenom et la langue de l'interface.",
+    "settings.identityHelp": "Renseigne juste le prénom et la langue de l'interface.",
     "settings.progressLabel": "Progression",
-    "settings.progressTitle": "Ou en es-tu aujourd'hui ?",
-    "settings.progressHelp": "Indique le sens du parcours, la phase active, puis la page et la moitie a partir desquelles le plan doit repartir.",
+    "settings.progressTitle": "Où en es-tu aujourd'hui ?",
+    "settings.progressHelp": "Indique le sens du parcours, la phase active, puis la page et la moitié à partir desquelles le plan doit repartir.",
     "settings.programModeLabel": "Parcours",
-    "settings.programModeForwardOption": "Debut -> fin",
-    "settings.programModeReverseOption": "Fin -> debut",
-    "settings.programModeReverseForwardOption": "Fin -> debut puis debut -> fin",
+    "settings.programModeForwardOption": "Début -> fin",
+    "settings.programModeReverseOption": "Fin -> début",
+    "settings.programModeReverseForwardOption": "Fin -> début puis début -> fin",
     "settings.phaseLabel": "Phase actuelle",
     "settings.phaseSingleOption": "Phase unique - {{direction}}",
-    "settings.phaseReverseOption": "Phase 1 - fin -> debut",
-    "settings.phaseForwardOption": "Phase 2 - debut -> fin",
-    "settings.phaseCoveredLabel": "Pages deja couvertes",
-    "settings.phaseCoveredHelp": "Tu peux mettre .5 si tu es a la moitie d'une page.",
+    "settings.phaseReverseOption": "Phase 1 - fin -> début",
+    "settings.phaseForwardOption": "Phase 2 - début -> fin",
+    "settings.phaseCoveredLabel": "Pages déjà couvertes",
+    "settings.phaseCoveredHelp": "Tu peux mettre .5 si tu es à la moitié d'une page.",
     "settings.phaseNextLabel": "Prochain point",
-    "settings.phaseStatusLabel": "Etat",
+    "settings.phaseStatusLabel": "État",
     "settings.phaseStatusActive": "En cours",
-    "settings.phaseStatusDone": "Phase terminee",
-    "settings.phaseAutoHelp": "Les deux phases peuvent avancer en parallele. Choisis simplement celle que tu veux afficher dans le plan du jour.",
-    "settings.phaseDisplayLabel": "Plan affiche",
+    "settings.phaseStatusDone": "Phase terminée",
+    "settings.phaseAutoHelp": "Les deux phases peuvent avancer en parallèle. Choisis simplement celle que tu veux afficher dans le plan du jour.",
+    "settings.phaseDisplayLabel": "Plan affiché",
     "settings.phaseDisplayButton": "Afficher cette phase",
-    "settings.phaseDisplayActive": "Phase affichee",
+    "settings.phaseDisplayActive": "Phase affichée",
     "settings.rhythmLabel": "Rythme",
     "settings.rhythmTitle": "Quel rythme veux-tu tenir ?",
-    "settings.rhythmHelp": "Choisis ta part de nouveau quotidienne, puis ajuste la taille totale si besoin.",
-    "settings.previewLabel": "Apercu",
+    "settings.rhythmHelp": "Choisis simplement ta part de [[nouveau quotidienne]]. Le mushaf suivi reste fixe sur [[604 pages]].",
+    "settings.previewLabel": "Aperçu",
     "settings.previewTitle": "Ce que le plan va produire",
-    "settings.previewHelp": "Le recap se met a jour avec l'etat actuel du programme.",
+    "settings.previewHelp": "Le récap se met à jour avec l'état actuel du programme.",
     "settings.previewPath": "Sens actif",
     "settings.previewPhase": "Phase",
     "settings.previewCurrent": "Point actuel",
     "settings.previewNew": "Nouveau du jour",
     "settings.previewOld": "Ancien aujourd'hui",
     "settings.previewConsolidation": "Consolidation",
-    "settings.previewRecent": "Recent",
+    "settings.previewRecent": "Récent",
     "settings.previewProgramDay": "Jour de programme",
     "settings.previewTotal": "Corpus suivi",
     "settings.previewMissing": "Aucun bloc pour cette zone aujourd'hui.",
     "settings.currentPageLabel": "Page actuelle",
-    "settings.currentHalfLabel": "Moitie actuelle",
+    "settings.currentHalfLabel": "Moitié actuelle",
+    "settings.lineLabel": "Ligne",
     "settings.upperHalfOption": "Haute",
     "settings.lowerHalfOption": "Basse",
-    "settings.dailyNewLabel": "Nouveau / jour (demi-pages)",
+    "settings.dailyNewLabel": "Nouveau / jour (pages)",
     "settings.programDayLabel": "Jour du programme",
     "settings.totalHalfPagesLabel": "Total de demi-pages",
-    "settings.submitButton": "Recalculer la journee",
+    "settings.submitButton": "Valider et recalculer la journée",
+    "settings.submitHelp": "Valide les réglages pour enregistrer puis recalculer le programme du jour.",
     "route.status.notRequired": "Non requis",
     "route.status.done": "Valide",
     "route.status.focus": "En focus",
     "route.status.waiting": "En attente",
     "status.unavailable": "Indisponible",
     "status.done": "Valide",
-    "status.locked": "Verrouille",
-    "status.pending": "A valider",
+    "status.locked": "Verrouillé",
+    "status.pending": "À valider",
     "lockNote": "Valide d'abord : {{items}}.",
     "emptyNote": "Aucun bloc disponible pour cette section aujourd'hui.",
     "meta.range": "Plage",
     "meta.size": "Taille",
     "meta.surahs": "Sourates",
-    "card.expand": "Voir le detail",
+    "card.expand": "Voir le détail",
     "card.collapse": "Replier",
     "toggle.undo": "Annuler la validation",
     "toggle.validate": "Marquer comme valide",
     "card.old.pool": "Pool ancien",
-    "card.old.rotation": "Roulement complet : {{count}} partie(s) equilibrees sur tout l'ancien > 30 jours.",
+    "card.old.rotation": "Roulement complet : {{count}} partie(s) équilibrée(s) sur tout l'ancien > 30 jours.",
     "card.consolidation.noRange": "Aucune plage",
     "card.consolidation.active": "Partie active du jour",
     "card.consolidation.inactive": "Partie inactive aujourd'hui",
-    "card.consolidation.concerned": "Partie concernee : revision des 30 derniers jours, sur la tranche J-8 a J-30.",
+    "card.consolidation.concerned": "Partie concernée : révision des 30 derniers jours, sur la tranche J-8 à J-30.",
     "card.consolidation.activeToday": "Partie active aujourd'hui : {{part}}",
-    "card.consolidation.blockToValidate": "Bloc a valider : {{block}}",
+    "card.consolidation.blockToValidate": "Bloc à valider : {{block}}",
     "card.new.morning": "matin",
     "card.new.noon": "midi",
     "card.new.evening": "soir",
     "card.new.inProgress": "En cours",
-    "card.new.complete": "Complete",
-    "card.new.checked": "Validations completes : {{count}} / 9",
-    "card.new.rule": "Regle : les 9 emplacements doivent etre valides pour clore le nouveau du jour.",
-    "card.new.locked": "Verrouille : valide d'abord {{items}}.",
+    "card.new.complete": "Complète",
+    "card.new.checked": "Validations complètes : {{count}} / 9",
+    "card.new.rule": "Règle : les [[9 emplacements]] doivent être validés pour clore le [[nouveau du jour]].",
+    "card.new.locked": "Verrouillé : valide d'abord {{items}}.",
     "summary.progress": "Progression",
     "summary.learned": "{{count}} apprises",
     "summary.totalPages": "{{count}} pages au total",
@@ -445,14 +514,14 @@ const I18N = {
     "summary.dailyNew": "Nouveau / jour",
     "hero.genericName": "",
     "hero.namedName": " {{name}}",
-    "day.completeTitle": "Journee complete.",
+    "day.completeTitle": "Journée complète.",
     "day.completeHelper": "{{done}} / {{total}} blocs valides, le programme peut avancer.",
     "day.completeText":
-      "Tu peux passer au lendemain. Le plan de demain sera recalcule automatiquement a partir de ta progression.",
-    "day.skippedTitle": "Journee cloturee sans nouveau.",
-    "day.skippedHelper": "{{done}} / {{total}} blocs du jour sont clotures, mais le nouveau reste au meme point.",
-    "day.skippedText": "Tu as termine la journee sans faire avancer la memorisation. Le programme reste sur le meme nouveau.",
-    "day.openTitle": "Journee encore ouverte.",
+      "Tu peux passer au lendemain. Le plan de demain sera recalculé automatiquement à partir de ta progression.",
+    "day.skippedTitle": "Journée clôturée sans nouveau.",
+    "day.skippedHelper": "{{done}} / {{total}} blocs du jour sont clôturés, mais le nouveau reste au même point.",
+    "day.skippedText": "Tu as terminé la journée sans faire avancer la mémorisation. Le programme reste sur le même nouveau.",
+    "day.openTitle": "Journée encore ouverte.",
     "day.openHelper": "{{done}} / {{total}} blocs valides pour aujourd'hui.",
     "day.remaining": "Il reste a valider : {{items}}.",
     "errorSummary.pagesWithErrors": "Pages avec erreurs",
@@ -485,8 +554,8 @@ const I18N = {
     "program.consolidation": "Consolidation",
     "program.consolidationShort": "Cons.",
     "program.consolidationDef": "Tout ce qui est entre J-8 et J-30.",
-    "program.recent": "Recent",
-    "program.recentShort": "Recent",
+    "program.recent": "Récent",
+    "program.recentShort": "Récent",
     "program.recentDef": "Tout ce qui est entre J-1 et J-7.",
     "program.yesterday": "Veille",
     "program.yesterdayShort": "Veille",
@@ -495,29 +564,29 @@ const I18N = {
     "program.newShort": "Nouveau",
     "program.newDef": "Le bloc a apprendre aujourd'hui.",
     "quick.noneLabel": "Inspecteur",
-    "quick.noneTitle": "Aucune page selectionnee",
+    "quick.noneTitle": "Aucune page sélectionnée",
     "quick.noneHelp": "Clique une page dans la grille pour afficher son contexte, ses erreurs et tes notes.",
     "quick.title": "Inspecteur",
     "quick.close": "Fermer",
     "quick.pageTitle": "Page {{page}}",
-    "quick.help": "Consulte l'etat de la page, son historique detaille, puis ouvre la vraie page pour placer une erreur precise.",
+    "quick.help": "Consulte l'état de la page, son historique détaillé, puis ouvre la vraie page pour placer une erreur précise.",
     "quick.stateLabel": "Statut actuel",
     "quick.surahLabel": "Sourates",
-    "quick.surahEmpty": "Aucune sourate identifiee pour cette page.",
+    "quick.surahEmpty": "Aucune sourate identifiée pour cette page.",
     "quick.zoneLabel": "Zone du programme",
-    "quick.zoneEmpty": "Aucune zone marquee aujourd'hui.",
+    "quick.zoneEmpty": "Aucune zone marquée aujourd'hui.",
     "quick.countsLabel": "Compteurs",
-    "quick.lastNoteLabel": "Derniere note",
-    "quick.lastNoteEmpty": "Aucune note enregistree pour cette page.",
+    "quick.lastNoteLabel": "Dernière note",
+    "quick.lastNoteEmpty": "Aucune note enregistrée pour cette page.",
     "quick.noteLabel": "Note d'erreur",
     "quick.notePlaceholder": "Ex: confusion avec une page proche, blocage au milieu...",
     "quick.noteHelp": "Les nouvelles erreurs se placent directement sur la vraie page du mushaf.",
-    "quick.historyLabel": "Historique recent",
-    "quick.historyEmpty": "Aucune erreur enregistree pour le moment.",
+    "quick.historyLabel": "Historique récent",
+    "quick.historyEmpty": "Aucune erreur enregistrée pour le moment.",
     "quick.historyNoNote": "Sans note",
-    "quick.reviewDueLabel": "A revoir",
+    "quick.reviewDueLabel": "À revoir",
     "quick.minor": "Mineur",
-    "quick.minorHelp": "Voyelle ou correction legere",
+    "quick.minorHelp": "Voyelle ou correction légère",
     "quick.medium": "Moyenne",
     "quick.mediumHelp": "Erreur dans un mot",
     "quick.grave": "Grave",
@@ -525,16 +594,76 @@ const I18N = {
     "quick.clear": "Effacer",
     "quick.clearHelp": "Effacer erreurs et notes",
     "quick.openEditor": "Ouvrir la page reelle",
-    "toast.pageSelected": "Page {{page}} selectionnee.",
-    "toast.pageClosed": "Page {{page}} fermee.",
-    "toast.errorAdded": "Erreur {{severity}} ajoutee a la page {{page}}.",
-    "toast.errorDeleted": "Erreur supprimee de la page {{page}}.",
-    "toast.errorsCleared": "Erreurs retirees de la page {{page}}.",
-    "toast.dayRecalculated": "Journee recalculee.",
-    "toast.dayReset": "Validations du jour reinitialisees.",
+    "toast.pageSelected": "Page {{page}} sélectionnée.",
+    "toast.pageClosed": "Page {{page}} fermée.",
+    "toast.errorAdded": "Erreur {{severity}} ajoutée à la page {{page}}.",
+    "toast.errorDeleted": "Erreur supprimée de la page {{page}}.",
+    "toast.errorsCleared": "Erreurs retirées de la page {{page}}.",
+    "toast.dayRecalculated": "Journée recalculée.",
+    "toast.dayReset": "Validations du jour réinitialisées.",
     "toast.nextDay": "Passage au jour suivant.",
-    "toast.skipMemorizationDay": "Journee cloturee sans nouvelle memorisation.",
-    "toast.networkError": "Erreur reseau.",
+    "toast.skipMemorizationDay": "Journée clôturée sans nouvelle mémorisation.",
+    "toast.networkError": "Erreur réseau.",
+    "toast.offlineMode": "Mode hors ligne active. Dabt utilise le cache local.",
+    "toast.backOnline": "Connexion retablie.",
+    "toast.snapshotMode": "Connexion absente. Dabt affiche le dernier etat local disponible.",
+    "toast.appInstalled": "Dabt est maintenant installe sur cet appareil.",
+    "toast.notificationsUpdated": "Rappels mis a jour.",
+    "toast.notificationsPermissionDenied": "Autorise les notifications pour activer les rappels quotidiens.",
+    "nav.statistics": "Statistiques",
+    "summary.streak": "Streak",
+    "summary.streakHintToday": "cloturee aujourd'hui",
+    "summary.streakHintOpen": "en cours de continuation",
+    "statistics.eyebrow": "Regularite",
+    "statistics.title": "Statistiques",
+    "statistics.help": "Observe ta streak, les derniers jours clotures et la solidite de ta routine.",
+    "statistics.currentStreak": "Streak actuelle",
+    "statistics.bestStreak": "Meilleure streak",
+    "statistics.last7": "Jours clotures (7j)",
+    "statistics.last30": "Jours clotures (30j)",
+    "statistics.completionRate": "Regularite 30 jours",
+    "statistics.skippedNew": "Jours sans nouveau",
+    "statistics.timelineTitle": "30 derniers jours",
+    "statistics.timelineHelp": "Chaque case represente un jour reel. La couleur montre si la journee a ete cloturee.",
+    "statistics.closed": "Cloturee",
+    "statistics.missed": "Non cloturee",
+    "statistics.todayPending": "Aujourd'hui en cours",
+    "statistics.recentClosures": "Dernieres clotures",
+    "statistics.recentClosuresEmpty": "Aucune journee cloturee pour l'instant.",
+    "statistics.recentClosureSkipped": "Sans nouveau",
+    "statistics.recentClosureFull": "Journee complete",
+    "statistics.pendingToday": "Pas encore cloturee aujourd'hui",
+    "settings.notificationsLabel": "Notifications",
+    "settings.notificationsTitle": "Rappels quotidiens",
+    "settings.notificationsHelp": "Active les rappels puis ajuste l'heure de la revision et des 3 vagues du nouveau.",
+    "settings.notificationsEnabledLabel": "Activer les notifications",
+    "settings.notificationsEnabledHelp": "Les rappels seront planifies dans l'app mobile.",
+    "settings.notificationReviewLabel": "Revision",
+    "settings.notificationReviewTitle": "Revision du jour",
+    "settings.notificationReviewHelp": "Un rappel pour l'ancien, la consolidation, le recent et la veille.",
+    "settings.notificationMorningLabel": "Matin",
+    "settings.notificationMorningTitle": "Nouveau - vague 1",
+    "settings.notificationMorningHelp": "Premier rappel pour lancer la premiere vague du nouveau.",
+    "settings.notificationNoonLabel": "Midi",
+    "settings.notificationNoonTitle": "Nouveau - vague 2",
+    "settings.notificationNoonHelp": "Deuxieme rappel pour reforcer le meme nouveau au milieu de la journee.",
+    "settings.notificationEveningLabel": "Soir",
+    "settings.notificationEveningTitle": "Nouveau - vague 3",
+    "settings.notificationEveningHelp": "Dernier rappel pour cloturer la troisieme vague du nouveau.",
+    "settings.notificationsStatusUnsupported": "Les rappels locaux seront actifs dans l'app mobile installee.",
+    "settings.notificationsStatusDisabled": "Les rappels sont desactives.",
+    "settings.notificationsStatusPermissionDenied": "Autorisation manquante: active les notifications systeme pour recevoir les rappels.",
+    "settings.notificationsStatusScheduled": "{{count}} rappel(s) planifie(s) chaque jour.",
+    "settings.notificationsStatusExactAlarm": "Les alarmes peuvent etre legerement differees par Android.",
+    "notifications.reminder.review.title": "Dabt - revision du jour",
+    "notifications.reminder.review.body": "Ouvre Dabt pour lancer ta revision du jour: {{items}}.",
+    "notifications.reminder.review.empty": "Ouvre Dabt pour reprendre ta revision du jour.",
+    "notifications.reminder.morning.title": "Dabt - nouveau du matin",
+    "notifications.reminder.morning.body": "Premiere vague du nouveau: {{range}}.",
+    "notifications.reminder.noon.title": "Dabt - nouveau de midi",
+    "notifications.reminder.noon.body": "Deuxieme vague du nouveau: {{range}}.",
+    "notifications.reminder.evening.title": "Dabt - nouveau du soir",
+    "notifications.reminder.evening.body": "Troisieme vague du nouveau: {{range}}.",
     "error.invalidPageFormat": "Format de pages invalide.",
     "error.invalidPageFormatExample": "Format de pages invalide. Utilise 12, 14, 20-25.",
     "error.pageOutOfRange": "Une page est hors limite.",
@@ -545,6 +674,7 @@ const I18N = {
     "hero.title": "Bismillah, here is your plan for today{{name}}!✨",
     "hero.text": "Find only what you need to recite today here, in the exact order of the program.",
     "hero.markerLabel": "Guide",
+    "hero.installApp": "Install Dabt",
     "hero.markerText":
       "The goal is to complete old review (< J-30) every 7 days, consolidation (from J-8 to J-30) every 3 days, then review the recent block (from J-1 to J-7), then yesterday (J-1), and finally learn the new block.",
     "nav.today": "Today",
@@ -552,6 +682,26 @@ const I18N = {
     "nav.review": "Review errors",
     "nav.surahs": "Mini game",
     "nav.settings": "Settings",
+    "onboarding.skip": "Skip",
+    "onboarding.next": "Next",
+    "onboarding.start": "Start",
+    "onboarding.step": "Screen {{current}} of {{total}}",
+    "onboarding.today.title": "The Today section guides you block by block",
+    "onboarding.today.body": "The Today section organizes your day: what to recite now, which order to follow, and how to validate each block at the right moment.",
+    "onboarding.pages.title": "The Pages section shows the mushaf at a glance",
+    "onboarding.pages.body": "The Pages section lets you open the real Quran page, place a precise mistake, and track your state page by page, then juz by juz.",
+    "onboarding.review.title": "The Review errors section revisits weak spots",
+    "onboarding.review.body": "The Review errors section uses FSRS to bring each mistake back at the best moment based on your answers, directly on the Quran page.",
+    "onboarding.surahs.title": "The Mini game section strengthens surah order",
+    "onboarding.surahs.body": "The Mini game section gives you two ways to practice: find the next surah or reorder a short sequence correctly.",
+    "onboarding.today.title": "Today guides you block by block",
+    "onboarding.today.body": "Today follows a spaced-repetition methodology: everything is reordered so you review at the right moment, from the oldest material to the most recent, before learning the new part.",
+    "onboarding.pages.title": "Pages lets you scan the mushaf at a glance",
+    "onboarding.pages.body": "Each page keeps its own state. Open the real Quran page, place a precise mistake, and follow your progress juz by juz.",
+    "onboarding.review.title": "Mistake review brings back weak spots",
+    "onboarding.review.body": "Mistake review uses FSRS, a science-based spaced repetition system, to bring each error back at the best moment according to your answers.",
+    "onboarding.surahs.title": "Mini game strengthens surah order",
+    "onboarding.surahs.body": "Two playful modes help you memorize faster: find the next surah or reorder a short sequence correctly.",
     "today.dayLabel": "Day",
     "today.validationTitle": "Validation Status",
     "today.validationHelp": "Validate the blocks in order, then move to the next day.",
@@ -670,6 +820,7 @@ const I18N = {
     "editor.selectionReady": "Area selected. You can save this error now.",
     "editor.selectionAutoLink": "No area to draw: this error will automatically open the first 3 lines of the next page.",
     "editor.selectionAutoLinkUsed": "A next-page link already exists on this page.",
+    "editor.touchSelectionHint": "On mobile, long-press the page to start selecting. Otherwise the gesture just scrolls the sheet.",
     "editor.save": "Save error",
     "editor.cancel": "Close",
     "editor.clearSelection": "Clear area",
@@ -690,6 +841,8 @@ const I18N = {
     "surahs.readyTitle": "Your round is ready",
     "surahs.readyHelpQuiz": "Choose your mode and range, then click Play to launch the first question.",
     "surahs.readyHelpMemory": "Choose your range, then click Play to reveal the 7 surahs you need to memorize.",
+    "surahs.settingsCompactLabel": "Settings",
+    "surahs.settingsToggle": "Mode and play range",
     "surahs.rangeLabel": "Play range",
     "surahs.rangeHint": "Choose one continuous span of surahs so the game stays focused on a precise sequence.",
     "surahs.rangeFrom": "From",
@@ -769,6 +922,7 @@ const I18N = {
     "settings.languageLabel": "Language",
     "settings.languageFrenchOption": "French",
     "settings.languageEnglishOption": "English",
+    "settings.languageArabicOption": "Arabic",
     "settings.identityLabel": "Identity",
     "settings.identityTitle": "Who is learning?",
     "settings.identityHelp": "Just set the first name and the interface language.",
@@ -795,7 +949,7 @@ const I18N = {
     "settings.phaseDisplayActive": "Displayed phase",
     "settings.rhythmLabel": "Pace",
     "settings.rhythmTitle": "What pace do you want to keep?",
-    "settings.rhythmHelp": "Choose your daily new portion, then adjust the total size if needed.",
+    "settings.rhythmHelp": "Just choose your daily new portion. The tracked mushaf stays fixed at 604 pages.",
     "settings.previewLabel": "Preview",
     "settings.previewTitle": "What the plan will generate",
     "settings.previewHelp": "This recap updates from the current program state.",
@@ -811,12 +965,14 @@ const I18N = {
     "settings.previewMissing": "No block for this zone today.",
     "settings.currentPageLabel": "Current page",
     "settings.currentHalfLabel": "Current half",
+    "settings.lineLabel": "Line",
     "settings.upperHalfOption": "Upper",
     "settings.lowerHalfOption": "Lower",
-    "settings.dailyNewLabel": "New / day (half-pages)",
+    "settings.dailyNewLabel": "New / day (pages)",
     "settings.programDayLabel": "Program day",
     "settings.totalHalfPagesLabel": "Total half-pages",
-    "settings.submitButton": "Recalculate the day",
+    "settings.submitButton": "Save and recalculate the day",
+    "settings.submitHelp": "Save these settings to refresh today's plan.",
     "route.status.notRequired": "Not required",
     "route.status.done": "Done",
     "route.status.focus": "In focus",
@@ -949,13 +1105,509 @@ const I18N = {
     "toast.nextDay": "Moved to the next day.",
     "toast.skipMemorizationDay": "Day closed without new memorization.",
     "toast.networkError": "Network error.",
+    "toast.offlineMode": "Offline mode is active. Dabt is using the local cache.",
+    "toast.backOnline": "Connection restored.",
+    "toast.snapshotMode": "Connection unavailable. Dabt is showing the latest local state snapshot.",
+    "toast.appInstalled": "Dabt is now installed on this device.",
+    "toast.notificationsUpdated": "Reminders updated.",
+    "toast.notificationsPermissionDenied": "Allow notifications to activate daily reminders.",
+    "nav.statistics": "Statistics",
+    "summary.streak": "Streak",
+    "summary.streakHintToday": "closed today",
+    "summary.streakHintOpen": "still alive today",
+    "statistics.eyebrow": "Consistency",
+    "statistics.title": "Statistics",
+    "statistics.help": "Track your streak, your latest closed days, and how steady your routine has been.",
+    "statistics.currentStreak": "Current streak",
+    "statistics.bestStreak": "Best streak",
+    "statistics.last7": "Closed days (7d)",
+    "statistics.last30": "Closed days (30d)",
+    "statistics.completionRate": "30-day consistency",
+    "statistics.skippedNew": "Days without new work",
+    "statistics.timelineTitle": "Last 30 days",
+    "statistics.timelineHelp": "Each tile represents a real day. Color shows whether the day was closed.",
+    "statistics.closed": "Closed",
+    "statistics.missed": "Not closed",
+    "statistics.todayPending": "Today still open",
+    "statistics.recentClosures": "Recent closures",
+    "statistics.recentClosuresEmpty": "No closed day yet.",
+    "statistics.recentClosureSkipped": "Without new work",
+    "statistics.recentClosureFull": "Full day",
+    "statistics.pendingToday": "Not closed yet today",
+    "settings.notificationsLabel": "Notifications",
+    "settings.notificationsTitle": "Daily reminders",
+    "settings.notificationsHelp": "Enable reminders, then set the review time and the 3 new-work waves.",
+    "settings.notificationsEnabledLabel": "Enable notifications",
+    "settings.notificationsEnabledHelp": "Reminders will be scheduled inside the mobile app.",
+    "settings.notificationReviewLabel": "Review",
+    "settings.notificationReviewTitle": "Daily review",
+    "settings.notificationReviewHelp": "One reminder for old work, consolidation, recent work, and yesterday.",
+    "settings.notificationMorningLabel": "Morning",
+    "settings.notificationMorningTitle": "New work - wave 1",
+    "settings.notificationMorningHelp": "First reminder to start the first new-work wave.",
+    "settings.notificationNoonLabel": "Noon",
+    "settings.notificationNoonTitle": "New work - wave 2",
+    "settings.notificationNoonHelp": "Second reminder to reinforce the same new block in the middle of the day.",
+    "settings.notificationEveningLabel": "Evening",
+    "settings.notificationEveningTitle": "New work - wave 3",
+    "settings.notificationEveningHelp": "Last reminder to close the third new-work wave.",
+    "settings.notificationsStatusUnsupported": "Local reminders will work inside the installed mobile app.",
+    "settings.notificationsStatusDisabled": "Reminders are disabled.",
+    "settings.notificationsStatusPermissionDenied": "Missing permission: enable system notifications to receive reminders.",
+    "settings.notificationsStatusScheduled": "{{count}} reminder(s) scheduled every day.",
+    "settings.notificationsStatusExactAlarm": "Android may delay reminders slightly.",
+    "notifications.reminder.review.title": "Dabt - daily review",
+    "notifications.reminder.review.body": "Open Dabt for today's review: {{items}}.",
+    "notifications.reminder.review.empty": "Open Dabt to continue today's review.",
+    "notifications.reminder.morning.title": "Dabt - morning new work",
+    "notifications.reminder.morning.body": "First new-work wave: {{range}}.",
+    "notifications.reminder.noon.title": "Dabt - noon new work",
+    "notifications.reminder.noon.body": "Second new-work wave: {{range}}.",
+    "notifications.reminder.evening.title": "Dabt - evening new work",
+    "notifications.reminder.evening.body": "Third new-work wave: {{range}}.",
     "error.invalidPageFormat": "Invalid page format.",
     "error.invalidPageFormatExample": "Invalid page format. Use 12, 14, 20-25.",
     "error.pageOutOfRange": "A page is out of range.",
     "error.selectPageFirst": "Choose a page first.",
     "part.label": "Part {{number}}",
   },
+  ar: {
+    "hero.title": "بسم الله، هذه خطتك لليوم{{name}} ✨",
+    "hero.text": "ستجد هنا فقط ما تحتاج إلى مراجعته اليوم، بالترتيب الصحيح للبرنامج.",
+    "hero.markerLabel": "دليل",
+    "hero.installApp": "تثبيت Dabt",
+    "nav.today": "اليوم",
+    "nav.pages": "الصفحات",
+    "nav.review": "مراجعة الاخطاء",
+    "nav.statistics": "الاحصائيات",
+    "nav.surahs": "اللعبة",
+    "nav.settings": "الاعدادات",
+    "onboarding.skip": "تخطي",
+    "onboarding.next": "التالي",
+    "onboarding.start": "ابدأ",
+    "onboarding.step": "الشاشة {{current}} من {{total}}",
+    "settings.eyebrow": "الاعدادات",
+    "settings.title": "الاعدادات",
+    "settings.help": "عدّل نقطة الانطلاق والوتيرة ثم اترك الخطة تعيد حساب اليوم.",
+    "settings.firstNameLabel": "الاسم",
+    "settings.firstNamePlaceholder": "اسمك",
+    "settings.languageLabel": "اللغة",
+    "settings.languageFrenchOption": "الفرنسية",
+    "settings.languageEnglishOption": "الانجليزية",
+    "settings.languageArabicOption": "العربية",
+    "today.dayLabel": "اليوم",
+    "today.validationTitle": "حالة التحقق",
+    "today.validationHelp": "تحقق من الكتل بالترتيب ثم انتقل إلى اليوم التالي.",
+    "today.focusLabel": "الآن",
+    "today.focusTitle": "ما الذي تفعله الآن",
+    "today.routeLabel": "ترتيب اليوم",
+    "today.routeTitle": "مسار التلاوة",
+    "pages.eyebrow": "متابعة الاخطاء",
+    "pages.title": "خريطة الصفحات",
+    "review.eyebrow": "التكرار المتباعد",
+    "review.title": "مراجعة الاخطاء",
+    "review.help": "كل بطاقة تعيد خطأ محددا وتعرضه في الوقت المناسب.",
+    "surahs.eyebrow": "اللعبة",
+    "surahs.title": "اللعبة المصغرة",
+    "surahs.help": "تدريب سريع على ترتيب السور.",
+  },
 };
+
+const AR_I18N_PATCH = {
+  "hero.namedName": " {{name}}",
+  "today.resetButton": "إعادة ضبط تحقق اليوم",
+  "today.skipMemorizationButton": "عدم حفظ شيء اليوم",
+  "today.advanceButton": "إنهاء اليوم والانتقال",
+  "today.focusHelp": "تظهر الكتلة النشطة أولا، بينما تبقى بقية العناصر مرئية بشكل ثانوي.",
+  "today.focusReady": "الكتلة الحالية",
+  "today.focusDoneTitle": "اليوم جاهز للإغلاق",
+  "today.focusDoneHelp": "تم التحقق من جميع كتل اليوم. يمكنك الانتقال إلى اليوم التالي.",
+  "today.focusStep": "الخطوة {{current}} من {{total}}",
+  "today.focusWaveProgress": "{{count}} / 9 من مراجعات الجديد مكتملة.",
+  "today.focusWaveGuide": "يمكن إكمال موجات الجديد داخل البطاقة في الأسفل.",
+  "today.focusValidate": "تحقق من هذه الكتلة الآن",
+  "today.focusUndo": "إلغاء التحقق",
+  "today.focusOpenNew": "فتح موجات الجديد",
+  "today.focusScroll": "الذهاب إلى تفاصيل الكتلة",
+  "today.routeHelp": "ابدأ دائما من الأقدم إلى الأحدث من دون خلط المستويات.",
+  "route.oldTitle": "القديم",
+  "route.oldHelp": "كل المحفوظ الأقدم من 30 يوما، مقسم إلى 7 أجزاء متوازنة.",
+  "route.consolidationTitle": "التثبيت",
+  "route.consolidationHelp": "مراجعة آخر 30 يوما ضمن المجال من J-8 إلى J-30.",
+  "route.recentTitle": "القريب",
+  "route.recentHelp": "كتلة متصلة من J-1 إلى J-7 حتى يبقى الجديد قريبا.",
+  "route.yesterdayTitle": "الأمس",
+  "route.yesterdayHelp": "كتلة الأمس وحدها للتحقق من المرور المباشر.",
+  "route.newTitle": "الجديد",
+  "route.newHelp": "كتلة اليوم الجديدة مع 3 موجات و9 تثبيتات.",
+  "pages.help": "سجّل الصفحة بعد التلاوة، ثم شاهد المناطق الضعيفة وعلامات البرنامج على كامل المصحف.",
+  "pages.quickLabel": "إدخال سريع",
+  "pages.quickTitle": "صفحة واحدة، نقرة واحدة، خطأ واحد",
+  "pages.quickHelp": "اضغط صفحة من الشبكة، افتح الصفحة الحقيقية من المصحف، ثم حدد موضع الخطأ بدقة.",
+  "pages.insightsLabel": "القراءة",
+  "pages.insightsTitle": "قراءة الخريطة بسرعة",
+  "pages.insightsHelp": "اقرأ الحالات بسرعة، ثم افتح الصفحة التي تريدها من المصحف الحقيقي.",
+  "pages.summaryLabel": "الملخص",
+  "pages.summaryTitle": "حالة الخريطة",
+  "pages.legendLabel": "الدليل",
+  "pages.legendTitle": "كيف تقرأ الخريطة",
+  "pages.mapLabel": "المصحف",
+  "pages.mapTitle": "تمثيل المصحف",
+  "pages.mapHelp": "اضغط أي صفحة لفتح المصحف الحقيقي وتحديد الخطأ.",
+  "pages.definitionsLabel": "تعريفات",
+  "pages.definitionsHelp": "مناطق البرنامج تظهر مباشرة فوق الخريطة.",
+  "pages.juzLabel": "الجزء {{number}}",
+  "pages.juzPages": "الصفحات {{start}}-{{end}}",
+  "pages.juzPageCount": "{{count}} صفحة",
+  "pages.juzErrorCount": "{{count}} صفحة هشة",
+  "pages.juzLearnedCount": "{{count}} صفحة محفوظة",
+  "pages.juzExpand": "فتح",
+  "pages.juzCollapse": "طي",
+  "review.dueNow": "للمراجعة الآن",
+  "review.upcoming": "لاحقا",
+  "review.mastered": "ثابتة",
+  "review.libraryLabel": "المكتبة",
+  "review.libraryTitle": "كل الصفحات التي فيها أخطاء",
+  "review.libraryHelp": "اضغط صفحة لفتحها بحرية من دون أن تفقد صف البطاقات المستحقة.",
+  "review.returnToQueue": "العودة إلى الصف",
+  "review.status.due": "للمراجعة",
+  "review.status.upcoming": "لاحقا",
+  "review.status.mastered": "ثابتة",
+  "review.selectedLabel": "الصفحة المحددة",
+  "review.browseHelp": "هذه الصفحة ليست مستحقة الآن. يمكنك مراجعة كل أخطائها بحرية.",
+  "review.browseListLabel": "الأخطاء الظاهرة في هذه الصفحة",
+  "review.emptyTitle": "لا توجد أخطاء مفصلة للمراجعة.",
+  "review.emptyHelp": "أضف أولا خطأ من صفحة حقيقية من المصحف لبدء هذا الوضع.",
+  "review.emptyUpcoming": "لا توجد بطاقات مستحقة الآن. عد لاحقا أو أضف خطأ جديدا.",
+  "review.nextDue": "المراجعة التالية",
+  "review.cardLabel": "بطاقة {{current}} من {{total}}",
+  "review.pageLabel": "الصفحة {{page}}",
+  "review.pageErrorCount": "{{count}} خطأ في هذه الصفحة",
+  "review.revealProgress": "{{count}} / {{total}} أخطاء مكشوفة",
+  "review.revealNextHelp": "اضغط على تحقق لكشف الخطأ التالي في الصفحة نفسها.",
+  "review.revealDoneHelp": "كل أخطاء الصفحة أصبحت مكشوفة. قيّمها الآن واحدا واحدا.",
+  "review.revealDoneButton": "تم كشف الكل",
+  "review.answerCurrentHelp": "يمكنك تقييم هذا الخطأ الآن، ثم الضغط على تحقق للخطأ التالي.",
+  "review.nextPagePeek": "بداية الصفحة {{page}}",
+  "review.scopeLabel": "النوع",
+  "review.noteLabel": "ملاحظة",
+  "review.noteEmpty": "بلا ملاحظة",
+  "review.swipeHelp": "اسحب إلى اليمين إذا أصبت، وإلى اليسار إذا أخطأت.",
+  "review.revealHelp": "اكشف الموضع أولا لترى هل تذكرته بشكل صحيح.",
+  "review.revealButton": "تحقق",
+  "review.hideButton": "أخف القناع",
+  "review.successButton": "صحيح",
+  "review.failureButton": "خطأ",
+  "review.successToast": "تمت مراجعة الخطأ بنجاح.",
+  "review.failureToast": "سيعود هذا الخطأ أسرع للمراجعة.",
+  "editor.eyebrow": "الصفحة الحقيقية",
+  "editor.title": "حدد موضع الخطأ",
+  "editor.help": "اسحب على الصفحة لتحديد المكان بدقة، ثم اختر نوع الخطأ.",
+  "editor.scopeLabel": "نوع الخطأ",
+  "editor.scope.harakah": "حركات",
+  "editor.scope.word": "كلمة",
+  "editor.scope.line": "سطر كامل",
+  "editor.scope.next-page-link": "نسيان الربط بالصفحة التالية",
+  "editor.noteLabel": "ملاحظة اختيارية",
+  "editor.notePlaceholder": "مثال: تردد في وسط السطر...",
+  "editor.selectionEmpty": "لا توجد منطقة محددة حاليا.",
+    "editor.selectionReady": "المنطقة جاهزة للحفظ.",
+    "editor.selectionAutoLink": "هذا النوع لا يحتاج إلى تحديد يدوي.",
+    "editor.selectionAutoLinkUsed": "سيتم عرض أول 3 أسطر من الصفحة التالية عند المراجعة.",
+    "editor.touchSelectionHint": "على الجوال اضغط ضغطا مطولا على الصفحة لبدء التحديد، وإلا فسيقوم السحب فقط بتمرير النافذة.",
+    "editor.save": "حفظ الخطأ",
+  "editor.cancel": "إغلاق",
+  "editor.clearSelection": "مسح التحديد",
+  "editor.deleteError": "حذف",
+  "editor.recentLabel": "أخطاء موجودة في هذه الصفحة",
+  "editor.recentEmpty": "لا يوجد خطأ محفوظ في هذه الصفحة بعد.",
+  "editor.openFromInspector": "فتح الصفحة الحقيقية",
+  "surahs.playModeLabel": "وضع اللعب",
+  "surahs.playModeQuiz": "قبل / بعد",
+  "surahs.playModeQuizHint": "اختر السورة الصحيحة قبلها أو بعدها.",
+  "surahs.playModeMemory": "حفظ الترتيب",
+  "surahs.playModeMemoryHint": "احفظ 7 سور ثم أعد ترتيبها.",
+  "surahs.playButton": "ابدأ",
+  "surahs.readyTitle": "كل شيء جاهز",
+  "surahs.readyHelpQuiz": "ابدأ جولة سريعة لاختبار ترتيب السور في المجال الذي اخترته.",
+  "surahs.readyHelpMemory": "ابدأ جولة لحفظ ترتيب 7 سور ثم إعادة ترتيبها.",
+  "surahs.settingsCompactLabel": "الاعدادات",
+  "surahs.settingsToggle": "وضع اللعب ومجاله",
+  "surahs.rangeLabel": "مجال اللعب",
+  "surahs.rangeHint": "اختر مجال السور الذي تريد اللعب عليه.",
+  "surahs.rangeFrom": "من",
+  "surahs.rangeTo": "إلى",
+  "surahs.rangeQuickAll": "كل السور",
+  "surahs.activeSpanLabel": "المجال النشط",
+  "surahs.activeSpanAll": "كل القرآن",
+  "surahs.countLabel": "العدد",
+  "surahs.countValue": "{{count}} سورة",
+  "surahs.coverageLabel": "يغطي",
+  "surahs.coverageEmpty": "لا توجد سورة في هذا المجال.",
+  "surahs.statsScore": "الصحيح",
+  "surahs.statsAnswered": "المجاب",
+  "surahs.statsStreak": "السلسلة",
+  "surahs.statsBestStreak": "أفضل سلسلة",
+  "surahs.statsAccuracy": "الدقة",
+  "surahs.heatLabel": "الزخم",
+  "surahs.heatCalm": "بداية هادئة",
+  "surahs.heatWarm": "يبدأ يسخن",
+  "surahs.heatFire": "مشتعل",
+  "surahs.heatBlazing": "لهيب قوي",
+  "surahs.heatLegend": "أسطوري",
+  "surahs.heatNext": "بقي {{count}} للوصول إلى المستوى التالي",
+  "surahs.heatMax": "أنت في أعلى مستوى.",
+  "surahs.streakValue": "سلسلة {{count}}",
+  "surahs.accuracyValue": "{{count}}٪",
+  "surahs.milestoneToast": "وصلت إلى {{label}}.",
+  "surahs.restart": "إعادة",
+  "surahs.promptNext": "ما السورة التالية؟",
+  "surahs.promptPrevious": "ما السورة السابقة؟",
+  "surahs.answerLabel": "اختر الجواب الصحيح",
+  "surahs.feedbackCorrect": "أحسنت، هذا هو الجواب الصحيح.",
+  "surahs.feedbackWrong": "ليس تماما. الجواب الصحيح هو {{name}}.",
+  "surahs.sequenceLabel": "التسلسل",
+  "surahs.nextQuestion": "السؤال التالي",
+  "surahs.memoryPreviewTitle": "احفظ هذا الترتيب",
+  "surahs.memoryPreviewHelp": "تأمل السور السبع جيدا قبل أن تختفي.",
+  "surahs.memoryCountdownLabel": "الوقت المتبقي",
+  "surahs.memoryCountdownValue": "{{count}} ث",
+  "surahs.memoryPreviewSkip": "أظهر البطاقات الآن",
+  "surahs.memoryReorderTitle": "أعد ترتيب السور",
+  "surahs.memoryReorderHelp": "اضغط على البطاقات لتعيدها إلى الترتيب الصحيح.",
+  "surahs.memorySelectedLabel": "ما اخترته",
+  "surahs.memoryRemainingLabel": "البطاقات المتبقية",
+  "surahs.memoryRemove": "إزالة",
+  "surahs.memoryClear": "مسح",
+  "surahs.memoryReplay": "إعادة المشاهدة",
+  "surahs.memoryNewRound": "جولة جديدة",
+  "surahs.memoryCorrect": "الترتيب صحيح تماما.",
+  "surahs.memoryWrong": "ليس هذا هو الترتيب الصحيح بعد.",
+  "surahs.memoryRemainingDone": "تم اختيار كل البطاقات.",
+  "surahs.memoryAnswerProgress": "{{count}} / {{total}} في الترتيب",
+  "surahs.emptyMemoryTitle": "المجال صغير جدا",
+  "surahs.emptyMemoryHelp": "اختر مجالا أكبر لتتوفر 7 سور على الأقل.",
+  "surahs.emptyRangeTitle": "المجال لا يكفي",
+  "surahs.emptyRangeHelp": "اختر مجالا أوسع حتى يصبح اللعب ممكنا.",
+  "surahs.emptyAllTitle": "لا توجد جولة الآن",
+  "surahs.emptyAllHelp": "وسّع المجال أو ارجع إلى كل السور.",
+  "surahs.currentLabel": "السورة الحالية",
+  "surahs.pagesLabel": "الصفحات",
+  "surahs.flamesLabel": "لهب",
+  "legend.noneTitle": "محايدة",
+  "legend.noneHelp": "لا يوجد خطأ مسجل.",
+  "legend.minorTitle": "خفيف",
+  "legend.minorHelp": "حركة أو تصحيح بسيط.",
+  "legend.mediumTitle": "متوسط",
+  "legend.mediumHelp": "خطأ في كلمة أو تردد أوضح.",
+  "legend.graveTitle": "شديد",
+  "legend.graveHelp": "نسيان أو توقف أو كسر كبير.",
+  "legend.learnedTitle": "محفوظة",
+  "legend.learnedHelp": "صفحة محفوظة حتى من دون خطأ.",
+  "settings.identityLabel": "الهوية",
+  "settings.identityTitle": "من الذي يحفظ؟",
+  "settings.identityHelp": "يكفي إدخال الاسم ولغة الواجهة.",
+  "settings.progressLabel": "التقدم",
+  "settings.progressTitle": "أين وصلت اليوم؟",
+  "settings.progressHelp": "حدد اتجاه البرنامج والمرحلة الحالية ثم الموضع الذي يجب أن تستأنف منه الخطة.",
+  "settings.programModeLabel": "المسار",
+  "settings.programModeForwardOption": "من البداية إلى النهاية",
+  "settings.programModeReverseOption": "من النهاية إلى البداية",
+  "settings.programModeReverseForwardOption": "من النهاية إلى البداية ثم من البداية إلى النهاية",
+  "settings.phaseLabel": "المرحلة الحالية",
+  "settings.phaseSingleOption": "مرحلة واحدة - {{direction}}",
+  "settings.phaseReverseOption": "المرحلة 1 - النهاية إلى البداية",
+  "settings.phaseForwardOption": "المرحلة 2 - البداية إلى النهاية",
+  "settings.phaseCoveredLabel": "الصفحات المغطاة",
+  "settings.phaseCoveredHelp": "يمكنك كتابة 0.5 إذا كنت في نصف صفحة.",
+  "settings.phaseNextLabel": "الموضع التالي",
+  "settings.phaseStatusLabel": "الحالة",
+  "settings.phaseStatusActive": "جارية",
+  "settings.phaseStatusDone": "مكتملة",
+  "settings.phaseAutoHelp": "يمكن للمرحلتين أن تتقدما معا. اختر فقط أي مرحلة تريد إظهارها في خطة اليوم.",
+  "settings.phaseDisplayLabel": "الخطة المعروضة",
+  "settings.phaseDisplayButton": "اعرض هذه المرحلة",
+  "settings.phaseDisplayActive": "هذه هي المرحلة المعروضة",
+  "settings.rhythmLabel": "الوتيرة",
+  "settings.rhythmTitle": "ما الوتيرة التي تريدها؟",
+  "settings.rhythmHelp": "اختر فقط مقدار الجديد اليومي. المصحف المتابع ثابت على 604 صفحات.",
+    "settings.currentPageLabel": "الصفحة الحالية",
+    "settings.currentHalfLabel": "نصف الصفحة الحالي",
+    "settings.lineLabel": "السطر",
+  "settings.upperHalfOption": "الأعلى",
+  "settings.lowerHalfOption": "الأسفل",
+    "settings.dailyNewLabel": "الجديد في اليوم (صفحات)",
+  "settings.programDayLabel": "يوم البرنامج",
+  "settings.submitButton": "حفظ الإعدادات وإعادة حساب اليوم",
+  "settings.submitHelp": "احفظ الإعدادات لتحديث خطة اليوم.",
+  "summary.progress": "التقدم",
+  "summary.learned": "{{count}} محفوظة",
+  "summary.totalPages": "{{count}} صفحة إجمالا",
+  "summary.phase": "المرحلة",
+  "summary.day": "اليوم",
+  "summary.currentPoint": "الموضع الحالي",
+  "summary.dailyNew": "الجديد / اليوم",
+  "day.completeTitle": "اليوم مكتمل.",
+  "day.completeHelper": "{{done}} / {{total}} كتل تم التحقق منها، ويمكن للبرنامج أن ينتقل.",
+  "day.completeText": "يمكنك الانتقال إلى اليوم التالي. ستتم إعادة حساب خطة الغد تلقائيا.",
+  "day.skippedTitle": "أغلق اليوم من دون جديد.",
+  "day.skippedHelper": "{{done}} / {{total}} من كتل اليوم مغلقة، لكن موضع الجديد لم يتقدم.",
+  "day.skippedText": "أنهيت اليوم من دون تقدم في الحفظ الجديد. سيبقى البرنامج في الموضع نفسه.",
+  "day.openTitle": "اليوم ما زال مفتوحا.",
+  "day.openHelper": "{{done}} / {{total}} كتل تم التحقق منها اليوم.",
+  "day.remaining": "المتبقي للتحقق: {{items}}.",
+  "errorSummary.pagesWithErrors": "صفحات فيها أخطاء",
+  "errorSummary.pagesWithErrorsHelp": "صفحات هشة من أصل {{total}}.",
+  "errorSummary.learnedPages": "صفحات محفوظة",
+  "errorSummary.learnedPagesHelp": "يشمل ذلك التعليم التلقائي بحسب المسار النشط.",
+  "errorSummary.minor": "خفيف",
+  "errorSummary.minorHelp": "مرات أخطاء الحركات.",
+  "errorSummary.medium": "متوسط",
+  "errorSummary.mediumHelp": "مرات أخطاء الكلمات.",
+  "errorSummary.grave": "شديد",
+  "errorSummary.graveHelp": "مرات التوقف أو النسيان.",
+  "page.neutral": "محايدة",
+  "page.minor": "خفيف",
+  "page.medium": "متوسط",
+  "page.grave": "شديد",
+  "page.learned": "محفوظة",
+  "page.learnedWithSeverity": "محفوظة - {{severity}}",
+  "page.learnedBadge": "ح",
+  "count.minor": "خ",
+  "count.medium": "م",
+  "count.grave": "ش",
+  "page.label": "الصفحة {{page}}",
+  "program.old": "القديم",
+  "program.oldShort": "قديم",
+  "program.oldDef": "كل ما قبل J-30.",
+  "program.oldToday": "القديم اليوم",
+  "program.oldTodayShort": "قديم اليوم",
+  "program.oldTodayDef": "جزء القديم المطلوب اليوم.",
+  "program.consolidation": "التثبيت",
+  "program.consolidationShort": "تثبيت",
+  "program.consolidationDef": "كل ما بين J-8 و J-30.",
+  "program.recent": "القريب",
+  "program.recentShort": "قريب",
+  "program.recentDef": "كل ما بين J-1 و J-7.",
+  "program.yesterday": "الأمس",
+  "program.yesterdayShort": "أمس",
+  "program.yesterdayDef": "الكتلة المحفوظة أمس، J-1.",
+  "program.new": "الجديد",
+  "program.newShort": "جديد",
+  "program.newDef": "الكتلة التي ستتعلمها اليوم.",
+  "toast.pageSelected": "تم اختيار الصفحة {{page}}.",
+  "toast.pageClosed": "تم إغلاق الصفحة {{page}}.",
+  "toast.errorAdded": "تمت إضافة خطأ {{severity}} إلى الصفحة {{page}}.",
+  "toast.errorDeleted": "تم حذف الخطأ من الصفحة {{page}}.",
+  "toast.errorsCleared": "تم حذف أخطاء الصفحة {{page}}.",
+  "toast.dayRecalculated": "تمت إعادة حساب اليوم.",
+  "toast.dayReset": "تمت إعادة ضبط تحقق اليوم.",
+  "toast.nextDay": "تم الانتقال إلى اليوم التالي.",
+  "toast.skipMemorizationDay": "أغلق اليوم من دون حفظ جديد.",
+  "toast.networkError": "خطأ في الشبكة.",
+  "toast.offlineMode": "الوضع غير المتصل مفعل. يستخدم Dabt الذاكرة المحلية.",
+  "toast.backOnline": "عادت الشبكة.",
+  "toast.snapshotMode": "لا يوجد اتصال. يعرض Dabt آخر حالة محلية متاحة.",
+  "toast.appInstalled": "تم تثبيت Dabt على هذا الجهاز.",
+  "error.invalidPageFormat": "تنسيق الصفحات غير صالح.",
+  "error.invalidPageFormatExample": "تنسيق الصفحات غير صالح. استعمل 12، 14، 20-25.",
+  "error.pageOutOfRange": "إحدى الصفحات خارج النطاق.",
+  "error.selectPageFirst": "اختر صفحة أولا.",
+  "hero.markerText": "الهدف هو إكمال مراجعة القديم كل 7 أيام، والتثبيت كل 3 أيام، ثم مراجعة القريب، ثم الأمس، ثم تعلم الجديد.",
+  "onboarding.today.title": 'قسم "اليوم" يوجهك خطوة بخطوة',
+  "onboarding.today.body": 'قسم "اليوم" ينظم يومك بمنطق التكرار المتباعد: ماذا تقرأ الآن، بأي ترتيب تتقدم، ومتى تثبت كل كتلة.',
+  "onboarding.pages.title": 'قسم "الصفحات" يعطيك نظرة شاملة على المصحف',
+  "onboarding.pages.body": 'قسم "الصفحات" يسمح لك بفتح الصفحة الحقيقية من القرآن، تحديد الخطأ بدقة، ثم متابعة حالتك صفحة صفحة وجزءا جزءا.',
+  "onboarding.review.title": 'قسم "مراجعة الاخطاء" يعيد المناطق الضعيفة',
+  "onboarding.review.body": 'قسم "مراجعة الاخطاء" يستخدم التكرار المتباعد مع FSRS ليعيد كل خطأ في أفضل وقت بحسب إجاباتك.',
+  "onboarding.surahs.title": 'قسم "اللعبة" يثبت ترتيب السور',
+  "onboarding.surahs.body": 'قسم "اللعبة" يقدم لك طريقتين للتدريب: معرفة السورة التالية أو ترتيب سلسلة قصيرة بالشكل الصحيح.',
+  "review.mask.harakah": "",
+  "review.mask.word": "",
+  "review.mask.line": "",
+  "review.mask.next-page-link": "",
+  "settings.previewLabel": "المعاينة",
+  "settings.previewTitle": "ما الذي ستنتجه الخطة",
+  "settings.previewHelp": "يتحدث هذا الملخص حسب حالة البرنامج الحالية.",
+  "settings.previewPath": "الاتجاه النشط",
+  "settings.previewPhase": "المرحلة",
+  "settings.previewCurrent": "الموضع الحالي",
+  "settings.previewNew": "جديد اليوم",
+  "settings.previewOld": "قديم اليوم",
+  "settings.previewConsolidation": "التثبيت",
+  "settings.previewRecent": "القريب",
+  "settings.previewProgramDay": "يوم البرنامج",
+  "settings.previewTotal": "المصحف المتابع",
+  "settings.previewMissing": "لا توجد كتلة لهذا المجال اليوم.",
+  "settings.totalHalfPagesLabel": "إجمالي أنصاف الصفحات",
+  "route.status.notRequired": "غير مطلوب",
+  "route.status.done": "تم",
+  "route.status.focus": "الآن",
+  "route.status.waiting": "بانتظارك",
+  "status.unavailable": "غير متاح",
+  "status.done": "تم",
+  "status.locked": "مقفل",
+  "status.pending": "قيد الانتظار",
+  "lockNote": "اقفل هذا الجزء حتى تنتهي مما قبله.",
+  "emptyNote": "لا شيء هنا حاليا.",
+  "meta.range": "المجال",
+  "meta.size": "الحجم",
+  "meta.surahs": "السور",
+  "card.expand": "فتح",
+  "card.collapse": "طي",
+  "toggle.undo": "إلغاء التحقق",
+  "toggle.validate": "تحقق",
+  "card.old.pool": "مجموعة القديم",
+  "card.old.rotation": "الدورة الكاملة: {{count}} جزءا متوازنا على كل القديم الأقدم من 30 يوما.",
+  "card.consolidation.noRange": "لا يوجد مجال",
+  "card.consolidation.active": "الجزء النشط اليوم",
+  "card.consolidation.inactive": "جزء غير نشط اليوم",
+  "card.consolidation.concerned": "الجزء المعني: مراجعة آخر 30 يوما ضمن المجال من J-8 إلى J-30.",
+  "card.consolidation.activeToday": "الجزء النشط اليوم: {{part}}",
+  "card.consolidation.blockToValidate": "الكتلة المطلوب التحقق منها: {{block}}",
+  "card.new.morning": "صباحا",
+  "card.new.noon": "ظهرا",
+  "card.new.evening": "مساء",
+  "card.new.inProgress": "جار",
+  "card.new.complete": "مكتمل",
+  "card.new.checked": "المراجعات المكتملة: {{count}} / 9",
+  "card.new.rule": "القاعدة: يجب إكمال 9 خانات لإغلاق الجديد اليوم.",
+  "card.new.locked": "مقفل: تحقق من {{items}} أولا.",
+  "hero.genericName": "",
+  "quick.noneLabel": "المعاين",
+  "quick.noneTitle": "لا توجد صفحة محددة",
+  "quick.noneHelp": "اضغط صفحة من الشبكة لرؤية سياقها وأخطائها وملاحظاتها.",
+  "quick.title": "المعاين",
+  "quick.close": "إغلاق",
+  "quick.pageTitle": "الصفحة {{page}}",
+  "quick.help": "راجع حالة الصفحة وتاريخها، ثم افتح الصفحة الحقيقية لتحديد خطأ دقيق.",
+  "quick.stateLabel": "الحالة الحالية",
+  "quick.surahLabel": "السور",
+  "quick.surahEmpty": "لم يتم التعرف على سورة لهذه الصفحة.",
+  "quick.zoneLabel": "منطقة البرنامج",
+  "quick.zoneEmpty": "لا توجد منطقة برنامج معلمة اليوم.",
+  "quick.countsLabel": "العدادات",
+  "quick.lastNoteLabel": "آخر ملاحظة",
+  "quick.lastNoteEmpty": "لا توجد ملاحظة محفوظة لهذه الصفحة بعد.",
+  "quick.noteLabel": "ملاحظة الخطأ",
+  "quick.notePlaceholder": "مثال: خلط مع صفحة قريبة، توقف في الوسط...",
+  "quick.noteHelp": "الأخطاء الجديدة توضع الآن مباشرة على صفحة المصحف الحقيقية.",
+  "quick.historyLabel": "السجل الحديث",
+  "quick.historyEmpty": "لا يوجد خطأ مسجل بعد.",
+  "quick.historyNoNote": "بلا ملاحظة",
+  "quick.reviewDueLabel": "مستحق",
+  "quick.minor": "خفيف",
+  "quick.minorHelp": "حركة أو تصحيح خفيف",
+  "quick.medium": "متوسط",
+  "quick.mediumHelp": "خطأ على مستوى الكلمة",
+  "quick.grave": "شديد",
+  "quick.graveHelp": "توقف أو نسيان",
+  "quick.clear": "مسح",
+  "quick.clearHelp": "حذف الأخطاء والملاحظات",
+  "quick.openEditor": "فتح الصفحة الحقيقية",
+  "part.label": "الجزء {{number}}",
+};
+I18N.ar = { ...I18N.ar, ...AR_I18N_PATCH };
 
 function $(selector) {
   return document.querySelector(selector);
@@ -974,8 +1626,18 @@ function escapeHtml(value = "") {
     .replaceAll("'", "&#39;");
 }
 
+function renderUiRichText(value = "") {
+  return escapeHtml(value).replace(/\[\[(.+?)\]\]/g, '<span class="ui-emphasis">$1</span>');
+}
+
 function getLanguage(payload = state.payload) {
-  return payload?.settings?.language === "en" ? "en" : "fr";
+  if (payload?.settings?.language === "en") {
+    return "en";
+  }
+  if (payload?.settings?.language === "ar") {
+    return "ar";
+  }
+  return "fr";
 }
 
 function interpolate(template, variables = {}) {
@@ -989,12 +1651,350 @@ function t(key, variables = {}, payload = state.payload) {
   return interpolate(dictionary[key] || fallback, variables);
 }
 
+function isMobileViewport() {
+  return typeof window !== "undefined" && window.matchMedia("(max-width: 720px)").matches;
+}
+
+function isCoarsePointerDevice() {
+  return typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
+}
+
+function isNativeAppRuntime() {
+  try {
+    if (window.Capacitor && typeof window.Capacitor.isNativePlatform === "function") {
+      return Boolean(window.Capacitor.isNativePlatform());
+    }
+
+    const protocol = String(window.location?.protocol || "").toLowerCase();
+    const host = String(window.location?.host || "").toLowerCase();
+    return protocol === "capacitor:" || protocol === "ionic:" || (host === "localhost" && Boolean(window.Capacitor));
+  } catch (_error) {
+    return false;
+  }
+}
+
+function normalizeNotificationTime(value, fallback = "09:00") {
+  const match = String(value || "")
+    .trim()
+    .match(/^(\d{1,2}):(\d{2})$/);
+
+  if (!match) {
+    return fallback;
+  }
+
+  const hour = Number.parseInt(match[1], 10);
+  const minute = Number.parseInt(match[2], 10);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return fallback;
+  }
+
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+function getDefaultNotificationPreferences() {
+  return {
+    enabled: false,
+    reminders: {
+      review: { enabled: true, time: "07:30" },
+      newMorning: { enabled: true, time: "09:00" },
+      newNoon: { enabled: true, time: "13:00" },
+      newEvening: { enabled: true, time: "20:00" },
+    },
+  };
+}
+
+function getNotificationPreferences(payload = state.payload) {
+  const fallback = getDefaultNotificationPreferences();
+  const source = payload?.preferences?.notifications || {};
+  const reminders = source.reminders || {};
+
+  return {
+    enabled: Boolean(source.enabled),
+    reminders: {
+      review: {
+        enabled: typeof reminders.review?.enabled === "boolean" ? reminders.review.enabled : fallback.reminders.review.enabled,
+        time: normalizeNotificationTime(reminders.review?.time, fallback.reminders.review.time),
+      },
+      newMorning: {
+        enabled:
+          typeof reminders.newMorning?.enabled === "boolean"
+            ? reminders.newMorning.enabled
+            : fallback.reminders.newMorning.enabled,
+        time: normalizeNotificationTime(reminders.newMorning?.time, fallback.reminders.newMorning.time),
+      },
+      newNoon: {
+        enabled: typeof reminders.newNoon?.enabled === "boolean" ? reminders.newNoon.enabled : fallback.reminders.newNoon.enabled,
+        time: normalizeNotificationTime(reminders.newNoon?.time, fallback.reminders.newNoon.time),
+      },
+      newEvening: {
+        enabled:
+          typeof reminders.newEvening?.enabled === "boolean"
+            ? reminders.newEvening.enabled
+            : fallback.reminders.newEvening.enabled,
+        time: normalizeNotificationTime(reminders.newEvening?.time, fallback.reminders.newEvening.time),
+      },
+    },
+  };
+}
+
+function getNotificationsBridge() {
+  return window.dabtBrowserLocalApi?.notifications || null;
+}
+
+function parseDateKey(dateKey) {
+  const match = String(dateKey || "")
+    .trim()
+    .match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const year = Number.parseInt(match[1], 10);
+  const month = Number.parseInt(match[2], 10);
+  const day = Number.parseInt(match[3], 10);
+  const date = new Date(year, month - 1, day);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatDateKey(dateKey, payload = state.payload, options = {}) {
+  const date = parseDateKey(dateKey);
+  if (!date) {
+    return "";
+  }
+
+  const locale = getLanguage(payload) === "en" ? "en-GB" : getLanguage(payload) === "ar" ? "ar" : "fr-FR";
+  return new Intl.DateTimeFormat(locale, {
+    day: "numeric",
+    month: "short",
+    ...options,
+  }).format(date);
+}
+
+function formatTimeValue(timeValue, payload = state.payload) {
+  const safeTime = normalizeNotificationTime(timeValue, "09:00");
+  const [hours, minutes] = safeTime.split(":").map((value) => Number.parseInt(value, 10));
+  const sample = new Date();
+  sample.setHours(hours, minutes, 0, 0);
+  const locale = getLanguage(payload) === "en" ? "en-GB" : getLanguage(payload) === "ar" ? "ar" : "fr-FR";
+  return new Intl.DateTimeFormat(locale, {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(sample);
+}
+
+function formatTimestampTime(value, payload = state.payload) {
+  const date = new Date(value || "");
+  if (Number.isNaN(date.getTime())) {
+    return formatTimeValue(value, payload);
+  }
+
+  const locale = getLanguage(payload) === "en" ? "en-GB" : getLanguage(payload) === "ar" ? "ar" : "fr-FR";
+  return new Intl.DateTimeFormat(locale, {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function getReviewReminderItems(payload = state.payload) {
+  const blocks = payload?.plan?.blocks || {};
+  return ["old", "consolidation", "recent", "yesterday"]
+    .filter((key) => blocks[key]?.present)
+    .map((key) => blocks[key]?.title)
+    .filter(Boolean);
+}
+
+function buildNotificationSchedulePayload(payload = state.payload, options = {}) {
+  const preferences = getNotificationPreferences(payload);
+  const reminders = [];
+  const newRangeLabel =
+    payload?.plan?.blocks?.new?.range?.label || payload?.plan?.summary?.dailyNewLabel || t("route.newTitle", {}, payload);
+  const reviewItems = getReviewReminderItems(payload);
+
+  reminders.push({
+    key: "review",
+    enabled: preferences.reminders.review.enabled,
+    time: preferences.reminders.review.time,
+    title: t("notifications.reminder.review.title", {}, payload),
+    body: t(
+      reviewItems.length ? "notifications.reminder.review.body" : "notifications.reminder.review.empty",
+      { items: reviewItems.join(", ") },
+      payload,
+    ),
+  });
+
+  if (payload?.plan?.blocks?.new?.present) {
+    reminders.push(
+      {
+        key: "newMorning",
+        enabled: preferences.reminders.newMorning.enabled,
+        time: preferences.reminders.newMorning.time,
+        title: t("notifications.reminder.morning.title", {}, payload),
+        body: t("notifications.reminder.morning.body", { range: newRangeLabel }, payload),
+      },
+      {
+        key: "newNoon",
+        enabled: preferences.reminders.newNoon.enabled,
+        time: preferences.reminders.newNoon.time,
+        title: t("notifications.reminder.noon.title", {}, payload),
+        body: t("notifications.reminder.noon.body", { range: newRangeLabel }, payload),
+      },
+      {
+        key: "newEvening",
+        enabled: preferences.reminders.newEvening.enabled,
+        time: preferences.reminders.newEvening.time,
+        title: t("notifications.reminder.evening.title", {}, payload),
+        body: t("notifications.reminder.evening.body", { range: newRangeLabel }, payload),
+      },
+    );
+  }
+
+  return {
+    enabled: preferences.enabled,
+    requestPermission: Boolean(options.requestPermission),
+    reminders,
+  };
+}
+
+function getNotificationStatusText(payload = state.payload) {
+  const runtime = state.notificationsRuntime || {};
+  const preferences = getNotificationPreferences(payload);
+  if (!runtime.native) {
+    return t("settings.notificationsStatusUnsupported", {}, payload);
+  }
+
+  if (!preferences.enabled) {
+    return t("settings.notificationsStatusDisabled", {}, payload);
+  }
+
+  if (runtime.display !== "granted") {
+    return t("settings.notificationsStatusPermissionDenied", {}, payload);
+  }
+
+  let message = t(
+    "settings.notificationsStatusScheduled",
+    { count: runtime.scheduledCount || runtime.pendingCount || 0 },
+    payload,
+  );
+  if (runtime.exactAlarm && runtime.exactAlarm !== "granted") {
+    message += ` ${t("settings.notificationsStatusExactAlarm", {}, payload)}`;
+  }
+  return message;
+}
+
+function renderNotificationRuntimeStatus(payload = state.payload) {
+  const runtimeNode = $("#notification-runtime-status");
+  if (!runtimeNode) {
+    return;
+  }
+
+  runtimeNode.textContent = getNotificationStatusText(payload);
+}
+
+async function refreshNotificationStatus(payload = state.payload, options = {}) {
+  const bridge = getNotificationsBridge();
+
+  if (!bridge) {
+    state.notificationsRuntime = {
+      supported: false,
+      native: false,
+      display: "prompt",
+      exactAlarm: "prompt",
+      pendingCount: 0,
+      synced: false,
+      scheduledCount: 0,
+      reason: "unsupported",
+    };
+    renderNotificationRuntimeStatus(payload);
+    return state.notificationsRuntime;
+  }
+
+  try {
+    const result = options.sync
+      ? await bridge.sync(buildNotificationSchedulePayload(payload, { requestPermission: options.requestPermission }))
+      : await bridge.getStatus();
+    state.notificationsRuntime = {
+      ...state.notificationsRuntime,
+      ...result,
+    };
+  } catch (error) {
+    if (!options.silent) {
+      showToast(error.message || t("toast.networkError", {}, payload), true);
+    }
+  }
+
+  renderNotificationRuntimeStatus(payload);
+  return state.notificationsRuntime;
+}
+
+function syncNotificationFormState() {
+  const masterEnabled = Boolean($("#notifications-enabled")?.checked);
+  const reminderPairs = [
+    ["#notification-review-enabled", "#notification-review-time"],
+    ["#notification-morning-enabled", "#notification-morning-time"],
+    ["#notification-noon-enabled", "#notification-noon-time"],
+    ["#notification-evening-enabled", "#notification-evening-time"],
+  ];
+
+  reminderPairs.forEach(([toggleSelector, timeSelector]) => {
+    const toggle = $(toggleSelector);
+    const timeInput = $(timeSelector);
+    const card = timeInput?.closest(".notification-reminder-card");
+    const reminderEnabled = Boolean(toggle?.checked);
+
+    if (timeInput) {
+      timeInput.disabled = !masterEnabled || !reminderEnabled;
+    }
+
+    card?.classList.toggle("is-disabled", !masterEnabled || !reminderEnabled);
+  });
+}
+
+function readOnboardingSeen() {
+  try {
+    return window.localStorage?.getItem(getOnboardingStorageKey()) === "seen";
+  } catch (_error) {
+    return false;
+  }
+}
+
+function markOnboardingSeen() {
+  try {
+    window.localStorage?.setItem(getOnboardingStorageKey(), "seen");
+  } catch (_error) {
+    // Ignore storage failures and continue.
+  }
+  state.onboarding.hasSeen = true;
+}
+
+function updateOnboardingVisibility(force = false) {
+  const shouldOpen = !state.onboarding.hasSeen && (isMobileViewport() || isNativeAppRuntime());
+  if (shouldOpen || force) {
+    state.onboarding.open = shouldOpen;
+    if (!shouldOpen) {
+      state.onboarding.stepIndex = 0;
+    }
+  }
+}
+
 function localizeStaticUi(payload = state.payload) {
   const language = getLanguage(payload);
   document.documentElement.lang = language;
+  document.documentElement.dir = language === "ar" ? "rtl" : "ltr";
+  document.body.classList.toggle("is-rtl", language === "ar");
+
+  if (state.lastLocalizedLanguage === language) {
+    return;
+  }
+  state.lastLocalizedLanguage = language;
 
   $all("[data-i18n]").forEach((node) => {
-    node.textContent = t(node.dataset.i18n, {}, payload);
+    const nestedLabel = node.querySelector(".section-tab-label");
+    if (nestedLabel) {
+      nestedLabel.innerHTML = renderUiRichText(t(node.dataset.i18n, {}, payload));
+      return;
+    }
+    node.innerHTML = renderUiRichText(t(node.dataset.i18n, {}, payload));
   });
 
   $all("[data-i18n-placeholder]").forEach((node) => {
@@ -1055,10 +2055,21 @@ async function ensureMushafPageFont(page) {
 }
 
 function rerenderMushafSurfaces() {
-  renderPageEditorModal(state.payload);
-  bindPageEditorActions();
-  renderErrorReview(state.payload);
-  bindErrorReviewActions();
+  if (mushafSurfacesRenderQueued) {
+    return;
+  }
+
+  mushafSurfacesRenderQueued = true;
+  window.requestAnimationFrame(() => {
+    mushafSurfacesRenderQueued = false;
+    if (state.pageEditor.open) {
+      refreshPageEditorSurface(state.payload);
+    }
+    if (state.activeView === "review") {
+      renderErrorReview(state.payload);
+      bindErrorReviewActions();
+    }
+  });
 }
 
 function normalizeMushafWord(rawWord, fallbackPage) {
@@ -1144,6 +2155,17 @@ function ensureMushafPageData(page) {
     });
 
   return state.mushafPageCache[key];
+}
+
+function prefetchMushafPages(pages = []) {
+  pages.forEach((page) => {
+    const safePage = Math.max(1, Number.parseInt(page, 10) || 0);
+    if (!safePage || safePage > MUSHAF_TOTAL_PAGES) {
+      return;
+    }
+
+    ensureMushafPageData(safePage);
+  });
 }
 
 function buildMushafWordMarkup(word, fontName) {
@@ -1303,18 +2325,26 @@ function physicalHalfPageToSequenceHalfPage(currentHalfPage, totalHalfPages, dir
 function getCurrentPageFromHalfPage(currentHalfPage, totalHalfPages, direction = "forward") {
   const safeTotal = Math.max(2, Number(totalHalfPages) || 2);
   const safeHalfPage = sequenceHalfPageToPhysicalHalfPage(currentHalfPage, safeTotal, direction);
-  return Math.ceil(safeHalfPage / 2);
+  return Math.ceil(safeHalfPage / PROGRESS_UNITS_PER_PAGE);
+}
+
+function getCurrentLineFromHalfPage(currentHalfPage, totalHalfPages, direction = "forward") {
+  const safeTotal = Math.max(2, Number(totalHalfPages) || 2);
+  const safeHalfPage = sequenceHalfPageToPhysicalHalfPage(currentHalfPage, safeTotal, direction);
+  const unitInPage = ((safeHalfPage - 1) % PROGRESS_UNITS_PER_PAGE) + 1;
+  return Math.max(1, Math.min(LINES_PER_PAGE, Math.ceil(unitInPage / (PROGRESS_UNITS_PER_PAGE / LINES_PER_PAGE))));
 }
 
 function getCurrentHalfLabelFromHalfPage(currentHalfPage, totalHalfPages, direction = "forward") {
   const safeTotal = Math.max(2, Number(totalHalfPages) || 2);
   const safeHalfPage = sequenceHalfPageToPhysicalHalfPage(currentHalfPage, safeTotal, direction);
-  return safeHalfPage % 2 === 0 ? "basse" : "haute";
+  const unitInPage = ((safeHalfPage - 1) % PROGRESS_UNITS_PER_PAGE) + 1;
+  return unitInPage <= PROGRESS_UNITS_PER_PAGE / 2 ? "haute" : "basse";
 }
 
 function syncCurrentPageMax() {
   const totalHalfPages = Math.max(2, Number($("#total-half-pages")?.value) || 2);
-  const totalPages = Math.max(1, Math.ceil(totalHalfPages / 2));
+  const totalPages = Math.max(1, Math.ceil(totalHalfPages / PROGRESS_UNITS_PER_PAGE));
   const currentPageInput = $("#current-page");
 
   if (!currentPageInput) {
@@ -1331,8 +2361,26 @@ function syncCurrentPageMax() {
 function syncDailyNewPresets() {
   const currentValue = Number($("#daily-new-half-pages")?.value || 0);
   $all("[data-daily-new-preset]").forEach((button) => {
-    button.classList.toggle("active", Number(button.dataset.dailyNewPreset) === currentValue);
+    button.classList.toggle("active", Math.abs(Number(button.dataset.dailyNewPreset) - currentValue) < 0.01);
   });
+}
+
+function formatInputPagesValueFromHalfPages(halfPages) {
+  const normalized = Math.max(0, Number(halfPages) || 0) / PROGRESS_UNITS_PER_PAGE;
+  if (Number.isInteger(normalized)) {
+    return String(normalized);
+  }
+  return normalized.toFixed(4).replace(/\.?0+$/, "");
+}
+
+function parseDailyNewPagesToHalfPages(rawValue) {
+  const normalized = Number.parseFloat(String(rawValue || "").replace(",", "."));
+  if (!Number.isFinite(normalized)) {
+    return PROGRESS_UNITS_PER_PAGE / 2;
+  }
+
+  const safePages = Math.max(0, Math.min(normalized, 10));
+  return Math.max(1, Math.min(Math.round(safePages * PROGRESS_UNITS_PER_PAGE), 10 * PROGRESS_UNITS_PER_PAGE));
 }
 
 function getPhaseLabel(mode, phaseIndex, payload = state.payload) {
@@ -1344,7 +2392,7 @@ function getPhaseLabel(mode, phaseIndex, payload = state.payload) {
 }
 
 function formatPagesValueFromHalfPages(halfPages, payload = state.payload) {
-  return formatPageCountFromHalfPages(Math.max(0, Number(halfPages) || 0) * 2 / 2, payload);
+  return formatPageCountFromHalfPages(Math.max(0, Number(halfPages) || 0), payload);
 }
 
 function formatCoveredPagesValue(halfPages, payload = state.payload) {
@@ -1357,8 +2405,8 @@ function parseCoveredPagesToHalfPages(rawValue, totalHalfPages) {
     return 0;
   }
 
-  const safePages = Math.max(0, Math.min(normalized, totalHalfPages / 2));
-  return Math.round(safePages * 2);
+  const safePages = Math.max(0, Math.min(normalized, totalHalfPages / PROGRESS_UNITS_PER_PAGE));
+  return Math.round(safePages * PROGRESS_UNITS_PER_PAGE);
 }
 
 function getPhaseProgressHalfPagesFromPayload(payload = state.payload, mode = payload?.settings?.programMode || "forward") {
@@ -1390,8 +2438,16 @@ function getCurrentPointLabelFromPhaseProgress(completedHalfPages, totalHalfPage
 
   const nextHalfPage = safeCompleted + 1;
   const page = getCurrentPageFromHalfPage(nextHalfPage, totalHalfPages, direction);
+  const line = getCurrentLineFromHalfPage(nextHalfPage, totalHalfPages, direction);
   const half = getCurrentHalfLabelFromHalfPage(nextHalfPage, totalHalfPages, direction);
-  return `${t("page.label", { page }, payload)} - ${half === "basse" ? t("settings.lowerHalfOption", {}, payload) : t("settings.upperHalfOption", {}, payload)}`;
+  const unitInPage = ((sequenceHalfPageToPhysicalHalfPage(nextHalfPage, totalHalfPages, direction) - 1) % PROGRESS_UNITS_PER_PAGE) + 1;
+  if (unitInPage === 1) {
+    return t("page.label", { page }, payload);
+  }
+  if (unitInPage === PROGRESS_UNITS_PER_PAGE / 2 + 1) {
+    return `${t("page.label", { page }, payload)} - ${t("settings.lowerHalfOption", {}, payload)}`;
+  }
+  return `${t("page.label", { page }, payload)} - ${t("settings.lineLabel", {}, payload)} ${line}`;
 }
 
 function renderPhaseProgressEditor(payload = state.payload, options = {}) {
@@ -1418,9 +2474,10 @@ function renderPhaseProgressEditor(payload = state.payload, options = {}) {
     const isDisplayed = activePhaseIndex === phaseNumber;
     const statusLabel = isDone ? t("settings.phaseStatusDone", {}, payload) : t("settings.phaseStatusActive", {}, payload);
     const currentLabel = getCurrentPointLabelFromPhaseProgress(coveredHalfPages, totalHalfPages, direction, payload);
-    const coveredPagesValue = Number.isInteger(coveredHalfPages / 2)
-      ? String(coveredHalfPages / 2)
-      : (coveredHalfPages / 2).toFixed(1);
+    const coveredPagesRaw = coveredHalfPages / PROGRESS_UNITS_PER_PAGE;
+    const coveredPagesValue = Number.isInteger(coveredPagesRaw)
+      ? String(coveredPagesRaw)
+      : coveredPagesRaw.toFixed(2).replace(/\.?0+$/, "");
     const completionPercent = Math.max(0, Math.min(100, Math.round((coveredHalfPages / totalHalfPages) * 100)));
 
     return `
@@ -1446,8 +2503,8 @@ function renderPhaseProgressEditor(payload = state.payload, options = {}) {
           <input
             type="number"
             min="0"
-            max="${escapeHtml(totalHalfPages / 2)}"
-            step="0.5"
+                  max="${escapeHtml(totalHalfPages / PROGRESS_UNITS_PER_PAGE)}"
+            step="any"
             value="${escapeHtml(coveredPagesValue)}"
             data-phase-pages="${escapeHtml(phaseNumber)}"
           />
@@ -1491,23 +2548,15 @@ function renderPhaseProgressEditor(payload = state.payload, options = {}) {
 }
 
 async function api(path, options = {}) {
-  const config = {
-    ...options,
-    headers: {
-      ...(options.headers || {}),
-    },
-  };
-
-  if (config.body && !config.headers["Content-Type"]) {
-    config.headers["Content-Type"] = "application/json";
+  if (!dataClient?.request) {
+    throw new Error(t("toast.networkError"));
   }
 
-  const response = await fetch(path, config);
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error || t("toast.networkError"));
+  try {
+    return await dataClient.request(path, options);
+  } catch (error) {
+    throw new Error(error.message || t("toast.networkError"));
   }
-  return payload;
 }
 
 function showToast(message, isError = false) {
@@ -1519,19 +2568,153 @@ function showToast(message, isError = false) {
   showToast.timer = setTimeout(() => toast.classList.remove("visible"), 2400);
 }
 
+function updateInstallButton() {
+  const button = $("#install-app-button");
+  if (!button) {
+    return;
+  }
+
+  button.hidden = !state.pwa.canInstall;
+  button.disabled = !state.pwa.canInstall;
+}
+
+function registerPwaFeatures() {
+  if ("serviceWorker" in navigator) {
+    let serviceWorkerRefreshPending = false;
+
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (serviceWorkerRefreshPending) {
+        return;
+      }
+
+      serviceWorkerRefreshPending = true;
+      window.location.reload();
+    });
+
+    navigator.serviceWorker
+      .register(`/service-worker.js?v=${SERVICE_WORKER_VERSION}`)
+      .then((registration) => {
+        registration.update().catch(() => {});
+
+        if (registration.waiting) {
+          registration.waiting.postMessage("SKIP_WAITING");
+        }
+
+        registration.addEventListener("updatefound", () => {
+          const worker = registration.installing;
+          if (!worker) {
+            return;
+          }
+
+          worker.addEventListener("statechange", () => {
+            if (worker.state === "installed" && navigator.serviceWorker.controller) {
+              worker.postMessage("SKIP_WAITING");
+            }
+          });
+        });
+      })
+      .catch(() => {
+        // Keep the app usable even if the worker fails to register.
+      });
+  }
+
+  window.addEventListener("offline", () => {
+    if (state.payload) {
+      showToast(t("toast.offlineMode", {}, state.payload), true);
+    }
+  });
+
+  window.addEventListener("online", () => {
+    if (state.payload) {
+      showToast(t("toast.backOnline", {}, state.payload));
+    }
+  });
+
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    state.pwa.installPrompt = event;
+    state.pwa.canInstall = true;
+    updateInstallButton();
+  });
+
+  window.addEventListener("appinstalled", () => {
+    state.pwa.installPrompt = null;
+    state.pwa.canInstall = false;
+    updateInstallButton();
+    if (state.payload) {
+      showToast(t("toast.appInstalled", {}, state.payload));
+    }
+  });
+}
+
 function formatHalfPageCount(value, payload = state.payload) {
   const normalized = Number(value || 0);
   const language = getLanguage(payload);
-  const unit = language === "en" ? (normalized === 1 ? "half-page" : "half-pages") : `demi-page${normalized === 1 ? "" : "s"}`;
+  const unit =
+    language === "en"
+      ? normalized === 1
+        ? "half-page"
+        : "half-pages"
+      : language === "ar"
+        ? normalized === 1
+          ? "نصف صفحة"
+          : "أنصاف صفحات"
+        : `demi-page${normalized === 1 ? "" : "s"}`;
   return `${normalized} ${unit}`;
 }
 
-function formatPageCountFromHalfPages(halfPageCount, payload = state.payload) {
-  const normalized = Number(halfPageCount || 0) / 2;
-  const formatted = Number.isInteger(normalized) ? String(normalized) : normalized.toFixed(1);
+function formatLineCount(value, payload = state.payload) {
+  const normalized = Number(value || 0);
+  const formatted = Number.isInteger(normalized) ? String(normalized) : normalized.toFixed(1).replace(/\.?0+$/, "");
   const numeric = Number(formatted);
   const language = getLanguage(payload);
-  const unit = language === "en" ? (numeric === 1 || numeric === 0.5 ? "page" : "pages") : `page${numeric === 1 || numeric === 0.5 ? "" : "s"}`;
+  const unit =
+    language === "en"
+      ? numeric === 1
+        ? "line"
+        : "lines"
+      : language === "ar"
+        ? numeric === 1
+          ? "سطر"
+          : "أسطر"
+        : `ligne${numeric === 1 ? "" : "s"}`;
+  return `${formatted} ${unit}`;
+}
+
+function formatPageCountFromHalfPages(halfPageCount, payload = state.payload) {
+  const units = Math.max(0, Number(halfPageCount || 0));
+  if (units > 0 && units < PROGRESS_UNITS_PER_PAGE) {
+    if (units === PROGRESS_UNITS_PER_PAGE / 2) {
+      return formatHalfPageCount(1, payload);
+    }
+
+    if (units > PROGRESS_UNITS_PER_PAGE / 2) {
+      const remainingUnits = units - PROGRESS_UNITS_PER_PAGE / 2;
+      if (remainingUnits > 0 && remainingUnits % 2 === 0) {
+        return `${formatHalfPageCount(1, payload)} + ${formatLineCount(remainingUnits / 2, payload)}`;
+      }
+    }
+
+    if (units % 2 === 0) {
+      return formatLineCount(units / 2, payload);
+    }
+  }
+
+  const normalized = units / PROGRESS_UNITS_PER_PAGE;
+  const formatted = Number.isInteger(normalized) ? String(normalized) : normalized.toFixed(2).replace(/\.?0+$/, "");
+  const numeric = Number(formatted);
+  const language = getLanguage(payload);
+  const isSingular = (numeric > 0 && numeric < 1) || numeric === 1;
+  const unit =
+    language === "en"
+      ? isSingular
+        ? "page"
+        : "pages"
+      : language === "ar"
+        ? isSingular
+          ? "صفحة"
+          : "صفحات"
+        : `page${isSingular ? "" : "s"}`;
   return `${formatted} ${unit}`;
 }
 
@@ -2043,18 +3226,118 @@ function getSelectedPages(totalPages) {
   return [state.activePage];
 }
 
-function setActiveView(view) {
+function getCollapsedJuzRenderKey() {
+  return Object.keys(state.collapsedJuzs)
+    .sort((left, right) => Number(left) - Number(right))
+    .map((juz) => `${juz}:${state.collapsedJuzs[juz] === false ? "open" : "closed"}`)
+    .join("|");
+}
+
+function isErrorTrackingRenderReusable(payload) {
+  const cache = state.errorTrackingRenderCache || {};
+  return (
+    cache.pageErrorsRef === (payload?.pageErrors || null) &&
+    cache.summaryRef === (payload?.errorTracking?.summary || null) &&
+    cache.planRef === (payload?.plan || null) &&
+    cache.language === getLanguage(payload) &&
+    cache.collapsedKey === getCollapsedJuzRenderKey()
+  );
+}
+
+function rememberErrorTrackingRender(payload) {
+  state.errorTrackingRenderCache = {
+    pageErrorsRef: payload?.pageErrors || null,
+    summaryRef: payload?.errorTracking?.summary || null,
+    planRef: payload?.plan || null,
+    language: getLanguage(payload),
+    collapsedKey: getCollapsedJuzRenderKey(),
+  };
+}
+
+function syncActivePageCellHighlight() {
+  const activePage = Number.isInteger(state.activePage) ? state.activePage : null;
+  $all("[data-page-cell]").forEach((button) => {
+    button.classList.toggle("active-page", Number(button.dataset.pageCell) === activePage);
+  });
+}
+
+function refreshPagesQuickUi(payload = state.payload) {
+  renderPageQuickActions(payload);
+  syncActivePageCellHighlight();
+  bindPageQuickActions();
+}
+
+function setActiveView(view, options = {}) {
+  const { skipDeferredRender = false } = options;
   state.activeView = view;
+  state.activeViewRenderToken += 1;
+  const renderToken = state.activeViewRenderToken;
   if (view !== "pages" && state.pageEditor.open) {
     closePageEditor();
     renderPageEditorModal(state.payload);
   }
+  document.body.dataset.activeView = view;
   document.body.classList.toggle("pages-view-active", view === "pages");
   $all("[data-view-target]").forEach((button) => {
     button.classList.toggle("active", button.dataset.viewTarget === view);
   });
   $all(".content-view").forEach((panel) => {
     panel.classList.toggle("active", panel.id === `view-${view}`);
+  });
+  resetHorizontalViewportOffset();
+  if (options.scrollOnMobile && window.matchMedia("(max-width: 720px)").matches) {
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const behavior = isNativeAppRuntime() || isCoarsePointerDevice() || prefersReducedMotion ? "auto" : "smooth";
+    window.requestAnimationFrame(() => {
+      window.scrollTo({
+        top: 0,
+        behavior,
+      });
+    });
+  }
+
+  if (skipDeferredRender) {
+    return;
+  }
+
+  if (view === "pages" || view === "review" || view === "today" || view === "surahs" || view === "statistics") {
+    window.requestAnimationFrame(() => {
+      if (renderToken !== state.activeViewRenderToken || state.activeView !== view) {
+        return;
+      }
+
+      if (view === "pages") {
+        renderErrorTracking(state.payload);
+        bindPageQuickActions();
+        if (state.pageEditor.open) {
+          renderPageEditorModal(state.payload);
+          bindPageEditorActions();
+        }
+      } else if (view === "review") {
+        renderErrorReview(state.payload);
+        bindErrorReviewActions();
+      } else if (view === "surahs") {
+        renderSurahGame(state.payload);
+      } else if (view === "statistics") {
+        renderStatistics(state.payload);
+      } else if (view === "today") {
+        refreshTodayExperience(state.payload, { rebind: true });
+      }
+    });
+  }
+}
+
+function scrollTodayFocusIntoView() {
+  const target = $("#today-focus");
+  if (!target) {
+    return;
+  }
+
+  const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const behavior = isNativeAppRuntime() || isCoarsePointerDevice() || prefersReducedMotion ? "auto" : "smooth";
+  target.scrollIntoView({
+    behavior,
+    block: "start",
   });
 }
 
@@ -2063,6 +3346,8 @@ function openPageEditor(page) {
   if (!Number.isInteger(safePage) || safePage < 1) {
     return;
   }
+
+  prefetchMushafPages([safePage, safePage - 1, safePage + 1]);
 
   state.pageEditor = {
     open: true,
@@ -2073,6 +3358,7 @@ function openPageEditor(page) {
     rect: null,
     anchor: null,
     selectionOrigin: null,
+    needsTrackingRefresh: false,
   };
 }
 
@@ -2086,7 +3372,81 @@ function closePageEditor() {
     rect: null,
     anchor: null,
     selectionOrigin: null,
+    needsTrackingRefresh: false,
   };
+}
+
+function isPageEditorTouchSelectionRequired() {
+  return isNativeAppRuntime() || isCoarsePointerDevice();
+}
+
+function getPageEditorSelectionState(payload = state.payload) {
+  const page = Number(state.pageEditor.page);
+  const entry = normalizePageEntry((payload?.pageErrors || {})[String(page)]);
+  const detailedEvents = entry.events.filter((event) => event.rect || event.scope === "next-page-link");
+  const placedEvents = detailedEvents.filter((event) => event.rect);
+  const hasNextPageLink = detailedEvents.some((event) => event.scope === "next-page-link");
+  const isNextPageLinkScope = state.pageEditor.scope === "next-page-link";
+  const selectedRect = isNextPageLinkScope ? null : state.pageEditor.rect;
+  const selectionStateKey = isNextPageLinkScope
+    ? hasNextPageLink
+      ? "editor.selectionAutoLinkUsed"
+      : "editor.selectionAutoLink"
+    : selectedRect
+      ? "editor.selectionReady"
+      : "editor.selectionEmpty";
+
+  return {
+    entry,
+    detailedEvents,
+    placedEvents,
+    hasNextPageLink,
+    isNextPageLinkScope,
+    selectedRect,
+    selectionStateKey,
+    canSave: isNextPageLinkScope ? !hasNextPageLink : Boolean(selectedRect),
+    showTouchSelectionHint: isPageEditorTouchSelectionRequired() && !isNextPageLinkScope,
+  };
+}
+
+function updatePageEditorSelectionUi(payload = state.payload, modal = $("#page-editor-modal")) {
+  if (!modal || modal.hidden) {
+    return;
+  }
+
+  const selectionBox = modal.querySelector("#page-editor-selection-box");
+  const status = modal.querySelector("[data-page-editor-selection-status]");
+  const saveButton = modal.querySelector("[data-page-editor-save='true']");
+  const touchHint = modal.querySelector("[data-page-editor-gesture-hint]");
+  const stage = modal.querySelector("[data-page-editor-stage='true']");
+  const { selectedRect, selectionStateKey, canSave, showTouchSelectionHint } = getPageEditorSelectionState(payload);
+
+  if (selectionBox) {
+    selectionBox.classList.toggle("active", Boolean(selectedRect));
+    selectionBox.style.cssText = selectionRectStyle(selectedRect);
+  }
+
+  if (status) {
+    status.textContent = t(selectionStateKey, {}, payload);
+  }
+
+  if (saveButton) {
+    saveButton.disabled = !canSave;
+  }
+
+  if (touchHint) {
+    touchHint.hidden = !showTouchSelectionHint;
+  }
+
+  if (stage) {
+    const selectionInteractive = state.pageEditor.scope !== "next-page-link" && !isPageEditorTouchSelectionRequired();
+    stage.classList.toggle("selection-disabled", state.pageEditor.scope === "next-page-link");
+    stage.classList.toggle("selection-interactive", selectionInteractive);
+  }
+
+  modal.querySelectorAll("[data-page-editor-scope]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.pageEditorScope === state.pageEditor.scope);
+  });
 }
 
 function clampUnit(value) {
@@ -2126,6 +3486,32 @@ function getNormalizedPointerPosition(event, element) {
   return {
     x: clampUnit((event.clientX - bounds.left) / bounds.width),
     y: clampUnit((event.clientY - bounds.top) / bounds.height),
+  };
+}
+
+function getNormalizedTouchPosition(touch, element) {
+  if (!touch) {
+    return { x: 0, y: 0 };
+  }
+
+  return getNormalizedPointerPosition(
+    {
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+    },
+    element,
+  );
+}
+
+function cloneTouchSnapshot(touch) {
+  if (!touch) {
+    return null;
+  }
+
+  return {
+    identifier: Number(touch.identifier),
+    clientX: Number(touch.clientX || 0),
+    clientY: Number(touch.clientY || 0),
   };
 }
 
@@ -2345,7 +3731,7 @@ function snapPageEditorSelection(stage, rawRect, scope = "word") {
     };
   }
 
-  const frame = stage.closest(".page-editor-image-frame");
+  const frame = stage.closest(".page-editor-image-viewport");
   if (!frame) {
     return {
       rawRect: safeRawRect,
@@ -2471,8 +3857,8 @@ function pageIntersectsRange(page, range) {
     return false;
   }
 
-  const pageStart = (page - 1) * 2 + 1;
-  const pageEnd = page * 2;
+  const pageStart = (page - 1) * PROGRESS_UNITS_PER_PAGE + 1;
+  const pageEnd = page * PROGRESS_UNITS_PER_PAGE;
   const coverageStart = Number.isFinite(range.coverageStart) ? range.coverageStart : range.start;
   const coverageEnd = Number.isFinite(range.coverageEnd) ? range.coverageEnd : range.end;
   return coverageStart <= pageEnd && coverageEnd >= pageStart;
@@ -2550,8 +3936,8 @@ function getSurahsForRange(range) {
     return [];
   }
 
-  const startPage = Math.ceil(coverageStart / 2);
-  const endPage = Math.ceil(coverageEnd / 2);
+  const startPage = Math.ceil(coverageStart / PROGRESS_UNITS_PER_PAGE);
+  const endPage = Math.ceil(coverageEnd / PROGRESS_UNITS_PER_PAGE);
   return SURAH_PAGE_RANGES.filter((surah) => surah.endPage >= startPage && surah.startPage <= endPage);
 }
 
@@ -2589,7 +3975,8 @@ function buildRangeSurahChips(range, { compact = false } = {}) {
   }
 
   const startPage = Math.ceil(
-    (Number.isFinite(range.coverageStart) ? range.coverageStart : range.physicalStart || range.start || 1) / 2,
+    (Number.isFinite(range.coverageStart) ? range.coverageStart : range.physicalStart || range.start || 1) /
+      PROGRESS_UNITS_PER_PAGE,
   );
   const visibleSurahs = summary.surahs.slice(0, compact ? 2 : 3);
   const extraCount = summary.surahs.length - visibleSurahs.length;
@@ -3152,34 +4539,29 @@ function buildSurahSequenceMarkup(centerId) {
     .join("");
 }
 
-function buildSurahGameModeMarkup(payload = state.payload) {
+function buildSurahGameModeMarkup(payload = state.payload, { compact = false } = {}) {
   const gameMode = state.surahGame.gameMode || "quiz";
   return `
-    <section class="surah-mode-shell">
-      <div class="surah-mode-copy">
-        <span class="eyebrow">${escapeHtml(t("surahs.playModeLabel", {}, payload))}</span>
-      </div>
-      <div class="surah-mode-row">
-        <button
-          class="surah-mode-button ${gameMode === "quiz" ? "active" : ""}"
-          type="button"
-          data-surah-game-action="set-play-mode"
-          data-play-mode="quiz"
-        >
-          <strong>${escapeHtml(t("surahs.playModeQuiz", {}, payload))}</strong>
-          <span>${escapeHtml(t("surahs.playModeQuizHint", {}, payload))}</span>
-        </button>
-        <button
-          class="surah-mode-button ${gameMode === "memory" ? "active" : ""}"
-          type="button"
-          data-surah-game-action="set-play-mode"
-          data-play-mode="memory"
-        >
-          <strong>${escapeHtml(t("surahs.playModeMemory", {}, payload))}</strong>
-          <span>${escapeHtml(t("surahs.playModeMemoryHint", {}, payload))}</span>
-        </button>
-      </div>
-    </section>
+    <div class="surah-mode-row ${compact ? "compact" : ""}">
+      <button
+        class="surah-mode-button ${compact ? "compact" : ""} ${gameMode === "quiz" ? "active" : ""}"
+        type="button"
+        data-surah-game-action="set-play-mode"
+        data-play-mode="quiz"
+      >
+        <strong>${escapeHtml(t("surahs.playModeQuiz", {}, payload))}</strong>
+        <span>${escapeHtml(t("surahs.playModeQuizHint", {}, payload))}</span>
+      </button>
+      <button
+        class="surah-mode-button ${compact ? "compact" : ""} ${gameMode === "memory" ? "active" : ""}"
+        type="button"
+        data-surah-game-action="set-play-mode"
+        data-play-mode="memory"
+      >
+        <strong>${escapeHtml(t("surahs.playModeMemory", {}, payload))}</strong>
+        <span>${escapeHtml(t("surahs.playModeMemoryHint", {}, payload))}</span>
+      </button>
+    </div>
   `;
 }
 
@@ -3586,20 +4968,8 @@ function renderPageEditorModal(payload = state.payload) {
   }
 
   const page = state.pageEditor.page;
-  const entry = normalizePageEntry((payload.pageErrors || {})[String(page)]);
-  const detailedEvents = entry.events.filter((event) => event.rect || event.scope === "next-page-link");
-  const placedEvents = detailedEvents.filter((event) => event.rect);
-  const hasNextPageLink = detailedEvents.some((event) => event.scope === "next-page-link");
-  const isNextPageLinkScope = state.pageEditor.scope === "next-page-link";
-  const selectedRect = isNextPageLinkScope ? null : state.pageEditor.rect;
-  const selectionStateKey = isNextPageLinkScope
-    ? hasNextPageLink
-      ? "editor.selectionAutoLinkUsed"
-      : "editor.selectionAutoLink"
-    : selectedRect
-      ? "editor.selectionReady"
-      : "editor.selectionEmpty";
-  const canSave = isNextPageLinkScope ? !hasNextPageLink : Boolean(selectedRect);
+  const { detailedEvents, placedEvents, isNextPageLinkScope, selectedRect, selectionStateKey, canSave, showTouchSelectionHint } =
+    getPageEditorSelectionState(payload);
 
   container.hidden = false;
   container.innerHTML = `
@@ -3614,32 +4984,6 @@ function renderPageEditorModal(payload = state.payload) {
         <button class="secondary-button" type="button" data-page-editor-close="true">${escapeHtml(t("editor.cancel", {}, payload))}</button>
       </div>
       <div class="page-editor-layout">
-        <section class="page-editor-stage-panel">
-          <div class="page-editor-image-frame">
-            ${buildMushafPageMarkup(page)}
-            <div class="page-editor-stage ${isNextPageLinkScope ? "selection-disabled" : ""}" data-page-editor-stage="true">
-              ${placedEvents
-                .map(
-                  (event, index) => `
-                    <button
-                      class="page-editor-existing-mark ${escapeHtml(event.scope)}"
-                      type="button"
-                      data-selection-index="${escapeHtml(index)}"
-                      style="${selectionRectStyle(event.rect)}"
-                      title="${escapeHtml(errorScopeLabel(event.scope, payload))}"
-                    ></button>
-                  `,
-                )
-                .join("")}
-              <div
-                class="page-editor-selection ${selectedRect ? "active" : ""}"
-                id="page-editor-selection-box"
-                style="${selectionRectStyle(selectedRect)}"
-              ></div>
-            </div>
-          </div>
-          <p class="helper">${escapeHtml(t(selectionStateKey, {}, payload))}</p>
-        </section>
         <aside class="page-editor-side">
           <div class="page-editor-scope-group">
             <span class="eyebrow">${escapeHtml(t("editor.scopeLabel", {}, payload))}</span>
@@ -3677,45 +5021,49 @@ function renderPageEditorModal(payload = state.payload) {
           </div>
           <div class="quick-history-block">
             <span class="eyebrow">${escapeHtml(t("editor.recentLabel", {}, payload))}</span>
-            <div class="quick-history-list">
-              ${
-                detailedEvents.length
-                  ? detailedEvents
-                      .slice(0, 6)
-                      .map(
-                        (event) => `
-                          <article class="quick-history-item ${escapeHtml(event.severity)}">
-                            <div class="quick-history-row">
-                              <span class="quick-history-severity ${escapeHtml(event.severity)}">${escapeHtml(errorScopeLabel(event.scope, payload))}</span>
-                              <span class="quick-history-date">${escapeHtml(
-                                formatReviewTimestamp(event.review?.dueAt, payload) || formatEventTimestamp(event.createdAt, payload),
-                              )}</span>
-                            </div>
-                            <p class="helper">${escapeHtml(event.note || t("quick.historyNoNote", {}, payload))}</p>
-                            <div class="quick-history-actions">
-                              <button
-                                class="secondary-button danger-button quick-history-delete"
-                                type="button"
-                                data-page-editor-delete-error="${escapeHtml(event.id)}"
-                                data-page-editor-delete-page="${escapeHtml(page)}"
-                              >
-                                ${escapeHtml(t("editor.deleteError", {}, payload))}
-                              </button>
-                            </div>
-                          </article>
-                        `,
-                      )
-                      .join("")
-                  : `<div class="quick-empty-state">${escapeHtml(t("editor.recentEmpty", {}, payload))}</div>`
-              }
-            </div>
+            <div class="quick-history-list" data-page-editor-recent-list="true">${buildPageEditorRecentHistoryMarkup(
+              detailedEvents,
+              payload,
+              page,
+            )}</div>
           </div>
         </aside>
+        <section class="page-editor-stage-panel">
+          <div class="page-editor-image-frame">
+            <div class="page-editor-image-viewport">
+              ${buildMushafPageMarkup(page)}
+              <div class="page-editor-stage ${isNextPageLinkScope ? "selection-disabled" : ""}" data-page-editor-stage="true">
+                ${placedEvents
+                  .map(
+                    (event, index) => `
+                      <button
+                        class="page-editor-existing-mark ${escapeHtml(event.scope)}"
+                        type="button"
+                        data-selection-index="${escapeHtml(index)}"
+                        style="${selectionRectStyle(event.rect)}"
+                        title="${escapeHtml(errorScopeLabel(event.scope, payload))}"
+                      ></button>
+                    `,
+                  )
+                  .join("")}
+                <div
+                  class="page-editor-selection ${selectedRect ? "active" : ""}"
+                  id="page-editor-selection-box"
+                  style="${selectionRectStyle(selectedRect)}"
+                ></div>
+              </div>
+            </div>
+          </div>
+          <p class="page-editor-gesture-hint" data-page-editor-gesture-hint ${showTouchSelectionHint ? "" : "hidden"}>${escapeHtml(
+            t("editor.touchSelectionHint", {}, payload),
+          )}</p>
+          <p class="helper" data-page-editor-selection-status="true">${escapeHtml(t(selectionStateKey, {}, payload))}</p>
+        </section>
       </div>
     </div>
   `;
 
-  const frame = container.querySelector(".page-editor-image-frame");
+  const frame = container.querySelector(".page-editor-image-viewport");
   if (frame) {
     placedEvents.forEach((event, index) => {
       const mark = frame.querySelector(`[data-selection-index="${index}"]`);
@@ -3785,9 +5133,9 @@ function renderErrorReview(payload = state.payload) {
       <div class="section-head">
         <div>
           <p class="eyebrow">${escapeHtml(t("review.eyebrow", {}, payload))}</p>
-          <h2>${escapeHtml(t("review.title", {}, payload))}</h2>
+          <h2>${renderUiRichText(t("review.title", {}, payload))}</h2>
         </div>
-        <p class="muted">${escapeHtml(t("review.help", {}, payload))}</p>
+        <p class="muted">${renderUiRichText(t("review.help", {}, payload))}</p>
       </div>
       <section class="surah-empty-state">
         <h3>${escapeHtml(t("review.emptyTitle", {}, payload))}</h3>
@@ -3804,7 +5152,78 @@ function renderErrorReview(payload = state.payload) {
   }
 
   const selectedGroup = reviewPageGroups.find((group) => group.page === selectedPage) || null;
-  const activeGroup = selectedGroup || activeDueGroup || reviewPageGroups[0] || null;
+  const activeGroup = selectedGroup || activeDueGroup || null;
+  const reviewPageBrowserMarkup = reviewPageGroups
+    .map(
+      (group) => `
+        <button
+          class="review-page-chip ${escapeHtml(group.status)} ${group.page === activeGroup?.page ? "active" : ""}"
+          type="button"
+          data-review-select-page="${escapeHtml(group.page)}"
+        >
+          <div class="review-page-chip-head">
+            <strong>${escapeHtml(t("review.pageLabel", { page: group.page }, payload))}</strong>
+            <span class="review-page-chip-count">${escapeHtml(group.items.length)}</span>
+          </div>
+          <span class="review-page-chip-meta">${escapeHtml(t("review.pageErrorCount", { count: group.items.length }, payload))}</span>
+          <span class="review-page-chip-status ${escapeHtml(group.status)}">${escapeHtml(
+            group.dueCount ? `${t("review.status.due", {}, payload)} Â· ${group.dueCount}` : t(`review.status.${group.status}`, {}, payload),
+          )}</span>
+        </button>
+      `,
+    )
+    .join("");
+
+  if (!activeGroup) {
+    setReviewRevealedItemIds([]);
+    pruneReviewCompletedItems(null);
+    container.innerHTML = `
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">${escapeHtml(t("review.eyebrow", {}, payload))}</p>
+          <h2>${renderUiRichText(t("review.title", {}, payload))}</h2>
+        </div>
+        <p class="muted">${renderUiRichText(t("review.help", {}, payload))}</p>
+      </div>
+
+      <section class="review-stat-grid">
+        <article class="surah-stat-card">
+          <span>${escapeHtml(t("review.dueNow", {}, payload))}</span>
+          <strong>${escapeHtml(review.summary.dueCount || 0)}</strong>
+        </article>
+        <article class="surah-stat-card">
+          <span>${escapeHtml(t("review.upcoming", {}, payload))}</span>
+          <strong>${escapeHtml(review.summary.upcomingCount || 0)}</strong>
+        </article>
+        <article class="surah-stat-card">
+          <span>${escapeHtml(t("review.mastered", {}, payload))}</span>
+          <strong>${escapeHtml(review.summary.masteredCount || 0)}</strong>
+        </article>
+      </section>
+
+      <section class="review-library-shell">
+        <div class="review-library-head">
+          <div>
+            <p class="eyebrow">${escapeHtml(t("review.libraryLabel", {}, payload))}</p>
+            <h3>${escapeHtml(t("review.libraryTitle", {}, payload))}</h3>
+          </div>
+        </div>
+        <p class="helper">${escapeHtml(t("review.libraryHelp", {}, payload))}</p>
+        <div class="review-page-browser">
+          ${reviewPageBrowserMarkup}
+        </div>
+      </section>
+
+      <section class="review-card-shell">
+        <div class="surah-empty-state review-idle-state">
+          <h3>${escapeHtml(t("review.emptyUpcoming", {}, payload))}</h3>
+          <p class="muted">${escapeHtml(t("review.libraryHelp", {}, payload))}</p>
+        </div>
+      </section>
+    `;
+    return;
+  }
+
   const activeDueGroupForPage = activeGroup ? duePageGroups.find((group) => group.page === activeGroup.page) || null : null;
   const hasDueFlow = Boolean(activeDueGroupForPage);
 
@@ -3852,7 +5271,8 @@ function renderErrorReview(payload = state.payload) {
   const noteText = currentAnswerItem?.note || t("review.noteEmpty", {}, payload);
   const revealButtonLabel = nextHiddenItem ? t("review.revealButton", {}, payload) : t("review.revealDoneButton", {}, payload);
   const revealHelpText = nextHiddenItem ? t("review.revealNextHelp", {}, payload) : t("review.revealDoneHelp", {}, payload);
-  const activeStatusLabel = t(`review.status.${currentGroup.status}`, {}, payload);
+  const activeStatusKey = currentGroup?.status || (hasDueFlow ? "due" : "upcoming");
+  const activeStatusLabel = t(`review.status.${activeStatusKey}`, {}, payload);
   const hasReturnToQueue = Boolean(selectedGroup && activeDueGroup);
   const nextPagePreviewItem = hasDueFlow
     ? currentAnswerItem?.scope === "next-page-link"
@@ -3876,20 +5296,26 @@ function renderErrorReview(payload = state.payload) {
     .join("");
   const sideActionsMarkup = hasDueFlow
     ? `
-        <aside class="review-side-actions">
-          <button
-            class="secondary-button review-side-button"
-            type="button"
-            data-review-reveal-next="${escapeHtml(nextHiddenItem?.id || "")}"
-            ${nextHiddenItem ? "" : "disabled"}
-          >
-            ${escapeHtml(revealButtonLabel)}
-          </button>
+        <aside class="review-side-actions ${nextHiddenItem ? "with-reveal" : "without-reveal"}">
+          ${
+            nextHiddenItem
+              ? `
+                <button
+                  class="secondary-button review-side-button"
+                  type="button"
+                  data-review-reveal-next="${escapeHtml(nextHiddenItem.id)}"
+                >
+                  ${escapeHtml(revealButtonLabel)}
+                </button>
+              `
+              : ""
+          }
           <button
             class="secondary-button danger-button review-side-button"
             type="button"
             data-review-answer="failure"
             data-review-id="${escapeHtml(currentAnswerItem?.id || "")}"
+            data-review-page="${escapeHtml(currentGroup.page)}"
             ${canAnswerCurrentItem ? "" : "disabled"}
           >
             ${escapeHtml(t("review.failureButton", {}, payload))}
@@ -3899,6 +5325,7 @@ function renderErrorReview(payload = state.payload) {
             type="button"
             data-review-answer="success"
             data-review-id="${escapeHtml(currentAnswerItem?.id || "")}"
+            data-review-page="${escapeHtml(currentGroup.page)}"
             ${canAnswerCurrentItem ? "" : "disabled"}
           >
             ${escapeHtml(t("review.successButton", {}, payload))}
@@ -3936,9 +5363,9 @@ function renderErrorReview(payload = state.payload) {
     <div class="section-head">
       <div>
         <p class="eyebrow">${escapeHtml(t("review.eyebrow", {}, payload))}</p>
-        <h2>${escapeHtml(t("review.title", {}, payload))}</h2>
+          <h2>${renderUiRichText(t("review.title", {}, payload))}</h2>
       </div>
-      <p class="muted">${escapeHtml(t("review.help", {}, payload))}</p>
+      <p class="muted">${renderUiRichText(t("review.help", {}, payload))}</p>
     </div>
 
     <section class="review-stat-grid">
@@ -4040,6 +5467,177 @@ function renderErrorReview(payload = state.payload) {
   }
 }
 
+function buildPageEditorRecentHistoryMarkup(detailedEvents, payload = state.payload, page = state.pageEditor.page) {
+  return detailedEvents.length
+    ? detailedEvents
+        .slice(0, 6)
+        .map(
+          (event) => `
+            <article class="quick-history-item ${escapeHtml(event.severity)}">
+              <div class="quick-history-row">
+                <span class="quick-history-severity ${escapeHtml(event.severity)}">${escapeHtml(errorScopeLabel(event.scope, payload))}</span>
+                <span class="quick-history-date">${escapeHtml(
+                  formatReviewTimestamp(event.review?.dueAt, payload) || formatEventTimestamp(event.createdAt, payload),
+                )}</span>
+              </div>
+              <p class="helper">${escapeHtml(event.note || t("quick.historyNoNote", {}, payload))}</p>
+              <div class="quick-history-actions">
+                <button
+                  class="secondary-button danger-button quick-history-delete"
+                  type="button"
+                  data-page-editor-delete-error="${escapeHtml(event.id)}"
+                  data-page-editor-delete-page="${escapeHtml(page)}"
+                >
+                  ${escapeHtml(t("editor.deleteError", {}, payload))}
+                </button>
+              </div>
+            </article>
+          `,
+        )
+        .join("")
+    : `<div class="quick-empty-state">${escapeHtml(t("editor.recentEmpty", {}, payload))}</div>`;
+}
+
+function refreshPageEditorSurface(payload = state.payload) {
+  const modal = $("#page-editor-modal");
+  if (!modal || modal.hidden || !state.pageEditor.open) {
+    return;
+  }
+
+  const shell = modal.querySelector(".page-editor-shell");
+  const frame = modal.querySelector(".page-editor-image-viewport");
+  const stage = modal.querySelector("[data-page-editor-stage='true']");
+  const selectionBox = modal.querySelector("#page-editor-selection-box");
+  const noteInput = modal.querySelector("[data-page-editor-note='true']");
+  const recentList = modal.querySelector("[data-page-editor-recent-list='true']");
+  const scrollTop = shell ? shell.scrollTop : 0;
+  const page = Number(state.pageEditor.page);
+  const { detailedEvents, placedEvents, selectedRect, isNextPageLinkScope } = getPageEditorSelectionState(payload);
+
+  if (frame) {
+    const pageMarkup = buildMushafPageMarkup(page);
+    const template = document.createElement("template");
+    template.innerHTML = pageMarkup.trim();
+    const nextPageShell = template.content.firstElementChild;
+    const currentPageShell = frame.querySelector(".mushaf-page-shell");
+    if (nextPageShell) {
+      if (currentPageShell) {
+        currentPageShell.replaceWith(nextPageShell);
+      } else if (stage) {
+        frame.insertBefore(nextPageShell, stage);
+      } else {
+        frame.appendChild(nextPageShell);
+      }
+    }
+  }
+
+  if (noteInput && noteInput.value !== (state.pageEditor.note || "")) {
+    noteInput.value = state.pageEditor.note || "";
+  }
+
+  if (recentList) {
+    recentList.innerHTML = buildPageEditorRecentHistoryMarkup(detailedEvents, payload, state.pageEditor.page);
+  }
+
+  if (stage && frame) {
+    stage.classList.toggle("selection-disabled", isNextPageLinkScope);
+    stage.querySelectorAll(".page-editor-existing-mark").forEach((mark) => mark.remove());
+    placedEvents.forEach((event, index) => {
+      const mark = document.createElement("button");
+      mark.className = `page-editor-existing-mark ${event.scope}`;
+      mark.type = "button";
+      mark.dataset.selectionIndex = String(index);
+      mark.title = errorScopeLabel(event.scope, payload);
+      if (selectionBox) {
+        stage.insertBefore(mark, selectionBox);
+      } else {
+        stage.appendChild(mark);
+      }
+      applySelectionRectToElement(frame, mark, event);
+    });
+  }
+
+  if (selectionBox) {
+    selectionBox.classList.toggle("active", Boolean(selectedRect));
+    selectionBox.style.cssText = selectionRectStyle(selectedRect);
+  }
+
+  updatePageEditorSelectionUi(payload, modal);
+  bindPageEditorDeleteButtons(modal);
+
+  if (shell) {
+    shell.scrollTop = scrollTop;
+  }
+}
+
+function bindPageEditorDeleteButtons(modal = $("#page-editor-modal")) {
+  if (!modal || modal.hidden) {
+    return;
+  }
+
+  modal.querySelectorAll("[data-page-editor-delete-error]").forEach((button) => {
+    if (button.dataset.pageEditorDeleteBound === "true") {
+      return;
+    }
+
+    button.dataset.pageEditorDeleteBound = "true";
+    button.addEventListener("click", async () => {
+      if (button.disabled) {
+        return;
+      }
+
+      button.disabled = true;
+      try {
+        const page = Number(button.dataset.pageEditorDeletePage);
+        const id = String(button.dataset.pageEditorDeleteError || "").trim();
+        if (!Number.isInteger(page) || page < 1 || !id) {
+          return;
+        }
+
+        state.payload = await dataClient.removePageErrorItem(page, id);
+        state.pageEditor.needsTrackingRefresh = true;
+        refreshPageEditorSurface(state.payload);
+        showToast(t("toast.errorDeleted", { page }));
+      } catch (error) {
+        showToast(error.message, true);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
+}
+
+function refreshErrorExperience(payload = state.payload, options = {}) {
+  const {
+    refreshSummary = true,
+    refreshTracking = state.activeView === "pages" || state.pageEditor.open,
+    refreshReview = state.activeView === "review",
+    refreshEditor = state.pageEditor.open,
+  } = options;
+
+  if (refreshSummary) {
+    renderSummary(payload);
+    renderSettingsPreview(payload);
+  }
+
+  if (refreshTracking) {
+    renderErrorTracking(payload);
+    bindPageQuickActions();
+  } else if (state.activeView === "pages" || state.pageEditor.open) {
+    refreshPagesQuickUi(payload);
+  }
+
+  if (refreshReview) {
+    renderErrorReview(payload);
+    bindErrorReviewActions();
+  }
+
+  if (refreshEditor) {
+    renderPageEditorModal(payload);
+    bindPageEditorActions();
+  }
+}
+
 function clampPercent(value) {
   return Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
 }
@@ -4053,7 +5651,7 @@ function getDashboardMetrics(payload) {
   const presentKeys = plan.order.filter((key) => plan.blocks[key].present);
   const completedKeys = presentKeys.filter((key) => plan.blocks[key].dayComplete);
   const learnedHalfPages = getLearnedHalfPages(plan);
-  const learnedPages = learnedHalfPages / 2;
+  const learnedPages = learnedHalfPages / PROGRESS_UNITS_PER_PAGE;
   const progressHalfPages = Math.max(0, Number(plan.summary.learnedHalfPagesOverall || learnedHalfPages));
   const progressTotalHalfPages = Math.max(1, Number(plan.summary.totalProgramHalfPages || plan.summary.totalHalfPages || 1));
   const waveCheckedCount = plan.blocks.new.present ? Number(plan.blocks.new.checkedCount || 0) : 9;
@@ -4167,32 +5765,7 @@ function getCelebrationLayer() {
 }
 
 function launchMiniCelebration(origin, tone = "success") {
-  const layer = getCelebrationLayer();
-  if (!layer || !origin) {
-    return;
-  }
-
-  const centerX = origin.left + origin.width / 2;
-  const centerY = origin.top + origin.height / 2;
-  const palettes = {
-    success: ["#1d5b4f", "#6e8d59", "#8bc7a0", "#b8e0c7", "#b38946"],
-    failure: ["#8f5e49", "#c95d59", "#d7847c", "#f0b2aa", "#b38946"],
-  };
-  const colors = palettes[tone] || palettes.success;
-
-  for (let index = 0; index < 14; index += 1) {
-    const piece = document.createElement("span");
-    piece.className = "celebration-piece burst";
-    piece.style.left = `${centerX}px`;
-    piece.style.top = `${centerY}px`;
-    piece.style.setProperty("--dx", `${(Math.random() - 0.5) * 170}px`);
-    piece.style.setProperty("--dy", `${-40 - Math.random() * 120}px`);
-    piece.style.setProperty("--rotation", `${(Math.random() - 0.5) * 540}deg`);
-    piece.style.setProperty("--piece-color", colors[index % colors.length]);
-    piece.style.animationDuration = `${700 + Math.random() * 380}ms`;
-    layer.appendChild(piece);
-    setTimeout(() => piece.remove(), 1300);
-  }
+  launchButtonPulse(origin, tone);
 }
 
 function launchButtonPulse(origin, tone = "success") {
@@ -4208,7 +5781,7 @@ function launchButtonPulse(origin, tone = "success") {
   ring.style.width = `${Math.max(origin.width + 18, 92)}px`;
   ring.style.height = `${Math.max(origin.height + 18, 52)}px`;
   layer.appendChild(ring);
-  setTimeout(() => ring.remove(), 720);
+  setTimeout(() => ring.remove(), 560);
 }
 
 function launchFailureCelebration(origin) {
@@ -4224,7 +5797,80 @@ function launchGrandCelebration() {
   const pulse = document.createElement("span");
   pulse.className = "celebration-pulse green soft";
   layer.appendChild(pulse);
-  setTimeout(() => pulse.remove(), 1500);
+  setTimeout(() => pulse.remove(), 1100);
+}
+
+function launchDayCompletionCelebration(origin) {
+  const layer = getCelebrationLayer();
+  if (!layer) {
+    return;
+  }
+
+  const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const isMobileRuntime = isNativeAppRuntime() || isCoarsePointerDevice();
+
+  window.requestAnimationFrame(() => {
+    launchGrandCelebration();
+
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    const centerX = isMobileRuntime ? viewportWidth / 2 : origin ? origin.left + origin.width / 2 : viewportWidth / 2;
+    const centerY = isMobileRuntime ? viewportHeight * 0.48 : origin ? origin.top + origin.height / 2 : viewportHeight * 0.72;
+    const starCount = prefersReducedMotion ? 10 : isMobileRuntime ? 24 : 28;
+    const maxDistance = Math.min(isMobileRuntime ? 220 : 320, Math.max(160, viewportWidth * 0.32));
+    const colors = ["#fff5cf", "#f4d88a", "#f7fbff", "#dfeee7", "#f2c76d"];
+
+    if (isMobileRuntime) {
+      const core = document.createElement("span");
+      const coreDuration = prefersReducedMotion ? 760 : 1180;
+      core.className = "celebration-core-star";
+      core.style.left = `${centerX}px`;
+      core.style.top = `${centerY}px`;
+      layer.appendChild(core);
+      window.setTimeout(() => core.remove(), coreDuration);
+    }
+
+    for (let index = 0; index < starCount; index += 1) {
+      const star = document.createElement("span");
+      const angle = (-Math.PI / 2) + ((Math.PI * 2) / starCount) * index + ((Math.random() - 0.5) * 0.45);
+      const distance = maxDistance * (0.45 + Math.random() * 0.65);
+      const driftX = Math.cos(angle) * distance;
+      const driftY = Math.sin(angle) * distance - (isMobileRuntime ? 36 : 54);
+      const size = prefersReducedMotion ? 18 + Math.random() * 10 : isMobileRuntime ? 18 + Math.random() * 16 : 22 + Math.random() * 22;
+      const delay = prefersReducedMotion ? 0 : Math.random() * 180;
+      const duration = prefersReducedMotion ? 560 : 980 + Math.random() * 420;
+      const rotateStart = -28 + Math.random() * 56;
+      const rotateEnd = rotateStart + 70 + Math.random() * 110;
+      const scale = 0.92 + Math.random() * 0.52;
+
+      star.className = "celebration-star";
+      star.style.left = `${centerX + (Math.random() - 0.5) * 26}px`;
+      star.style.top = `${centerY + (Math.random() - 0.5) * 18}px`;
+      star.style.setProperty("--star-x", `${driftX.toFixed(1)}px`);
+      star.style.setProperty("--star-y", `${driftY.toFixed(1)}px`);
+      star.style.setProperty("--star-size", `${size.toFixed(1)}px`);
+      star.style.setProperty("--star-delay", `${delay.toFixed(0)}ms`);
+      star.style.setProperty("--star-duration", `${duration.toFixed(0)}ms`);
+      star.style.setProperty("--star-scale", scale.toFixed(2));
+      star.style.setProperty("--star-rotate-start", `${rotateStart.toFixed(1)}deg`);
+      star.style.setProperty("--star-rotate-end", `${rotateEnd.toFixed(1)}deg`);
+      star.style.setProperty("--star-color", colors[index % colors.length]);
+      layer.appendChild(star);
+      window.setTimeout(() => star.remove(), delay + duration + 220);
+    }
+  });
+}
+
+function resetHorizontalViewportOffset() {
+  try {
+    window.scrollTo({
+      top: window.scrollY,
+      left: 0,
+      behavior: "auto",
+    });
+  } catch (_error) {
+    window.scrollTo(0, window.scrollY);
+  }
 }
 
 function renderRouteProgress(plan) {
@@ -4364,7 +6010,7 @@ function renderTodayFocus(payload) {
       <div class="focus-copy">
         <p class="eyebrow">${escapeHtml(t("today.focusLabel", {}, payload))}</p>
         <h2>${escapeHtml(block.title)}</h2>
-        <p class="muted">${escapeHtml(block.helper || t("today.focusHelp", {}, payload))}</p>
+        <p class="muted">${renderUiRichText(block.helper || t("today.focusHelp", {}, payload))}</p>
         <div class="focus-status-row">
           <span class="status-pill pending">${escapeHtml(t("today.focusReady", {}, payload))}</span>
         </div>
@@ -4375,6 +6021,15 @@ function renderTodayFocus(payload) {
       </div>
     </div>
   `;
+}
+
+function renderTodayPhaseSwitcher(payload = state.payload) {
+  const container = $("#today-phase-switcher");
+  if (!container) {
+    return;
+  }
+  container.hidden = true;
+  container.innerHTML = "";
 }
 
 function statusMarkup(block) {
@@ -4517,7 +6172,7 @@ function oldCardMarkup(block) {
       </div>
       ${statusMarkup(block)}
     </div>
-    <p class="helper">${escapeHtml(block.helper)}</p>
+    <p class="helper">${renderUiRichText(block.helper)}</p>
   `;
 
   const detailContent = `
@@ -4563,7 +6218,7 @@ function simpleCardMarkup(blockKey, block) {
       </div>
       ${statusMarkup(block)}
     </div>
-    <p class="helper">${escapeHtml(block.helper)}</p>
+    <p class="helper">${renderUiRichText(block.helper)}</p>
   `;
 
   return cardFrameMarkup({
@@ -4602,7 +6257,7 @@ function consolidationCardMarkup(block) {
       </div>
       ${statusMarkup(block)}
     </div>
-    <p class="helper">${escapeHtml(block.helper)}</p>
+    <p class="helper">${renderUiRichText(block.helper)}</p>
   `;
 
   const detailContent = `
@@ -4667,7 +6322,7 @@ function newCardMarkup(block) {
       </div>
       ${statusMarkup(block)}
     </div>
-    <p class="helper">${escapeHtml(block.helper)}</p>
+    <p class="helper">${renderUiRichText(block.helper)}</p>
   `;
 
   const detailContent = `
@@ -4677,7 +6332,7 @@ function newCardMarkup(block) {
         ? `
           <div class="summary-lines">
             <p>${escapeHtml(t("card.new.checked", { count: block.checkedCount }))}</p>
-            <p>${escapeHtml(t("card.new.rule"))}</p>
+            <p>${renderUiRichText(t("card.new.rule"))}</p>
             ${block.locked && block.blockedByLabels?.length ? `<p>${escapeHtml(t("card.new.locked", { items: block.blockedByLabels.join(", ") }))}</p>` : ""}
           </div>
           <div class="wave-grid">${waveCards.join("")}</div>
@@ -4698,13 +6353,16 @@ function newCardMarkup(block) {
 function renderSummary(payload) {
   const { plan } = payload;
   const metrics = getDashboardMetrics(payload);
+  const streak = payload?.statistics?.streak || {};
   const rank = getRankFromProgress(metrics.learnedPercent);
-  const phaseHeadline = `${plan.summary.phaseLabel} | ${plan.summary.phaseDirectionLabel}`;
+  const phaseHeadline = plan.summary.phaseDirectionLabel;
   const coveredCorpusLabel = t(
     "summary.learned",
     { count: formatPageCountFromHalfPages(metrics.learnedHalfPages, payload) },
     payload,
   );
+  const currentPointDetails = getCurrentPointDetails(plan, payload);
+  const streakHint = streak.activeToday ? t("summary.streakHintToday", {}, payload) : t("summary.streakHintOpen", {}, payload);
 
   $("#summary").innerHTML = `
     <div class="summary-hero">
@@ -4723,38 +6381,185 @@ function renderSummary(payload) {
       </article>
       <div class="summary-grid">
         <article class="summary-chip">
-          <span class="eyebrow">${escapeHtml(t("summary.phase", {}, payload))}</span>
-          <strong>${escapeHtml(plan.summary.phaseLabel)}</strong>
-        </article>
-        <article class="summary-chip">
           <span class="eyebrow">${escapeHtml(t("summary.day", {}, payload))}</span>
           <strong>${escapeHtml(plan.summary.programDayIndex)}</strong>
         </article>
         <article class="summary-chip">
-          <span class="eyebrow">${escapeHtml(t("summary.currentPoint", {}, payload))}</span>
-          <strong>${escapeHtml(plan.summary.currentHalfPageLabel)}</strong>
-        </article>
-        <article class="summary-chip">
           <span class="eyebrow">${escapeHtml(t("summary.dailyNew", {}, payload))}</span>
           <strong>${escapeHtml(plan.summary.dailyNewLabel)}</strong>
+        </article>
+        <article class="summary-chip current-point">
+          <span class="eyebrow">${escapeHtml(t("summary.currentPoint", {}, payload))}</span>
+          <div class="summary-current-copy">
+            <strong>${escapeHtml(plan.summary.currentHalfPageLabel)}</strong>
+            <div class="summary-current-meta">
+              <span class="summary-current-pill">${escapeHtml(currentPointDetails.zoneLabel)}</span>
+            </div>
+          </div>
+        </article>
+        <article class="summary-chip streak-chip">
+          <span class="eyebrow">${escapeHtml(t("summary.streak", {}, payload))}</span>
+          <strong>${escapeHtml(String(streak.current || 0))}</strong>
+          <p class="summary-note">${escapeHtml(streakHint)}</p>
         </article>
       </div>
     </div>
   `;
 }
 
+function renderStatistics(payload) {
+  const container = $("#statistics-view");
+  if (!container) {
+    return;
+  }
+
+  const statistics = payload?.statistics || {};
+  const streak = statistics.streak || {};
+  const overview = statistics.overview || {};
+  const timeline = Array.isArray(statistics.timeline) ? statistics.timeline : [];
+  const recentClosures = Array.isArray(statistics.recentClosures) ? statistics.recentClosures : [];
+  const streakStatus = streak.activeToday ? t("summary.streakHintToday", {}, payload) : t("statistics.pendingToday", {}, payload);
+
+  container.innerHTML = `
+    <div class="statistics-stack">
+      <section class="statistics-kpi-grid">
+        <article class="statistics-kpi-card primary">
+          <span class="eyebrow">${escapeHtml(t("statistics.currentStreak", {}, payload))}</span>
+          <strong>${escapeHtml(String(streak.current || 0))}</strong>
+          <p class="helper">${escapeHtml(streakStatus)}</p>
+        </article>
+        <article class="statistics-kpi-card">
+          <span class="eyebrow">${escapeHtml(t("statistics.bestStreak", {}, payload))}</span>
+          <strong>${escapeHtml(String(streak.best || 0))}</strong>
+          <p class="helper">${escapeHtml(t("summary.streak", {}, payload))}</p>
+        </article>
+        <article class="statistics-kpi-card">
+          <span class="eyebrow">${escapeHtml(t("statistics.last7", {}, payload))}</span>
+          <strong>${escapeHtml(`${overview.closedDaysLast7 || 0}/7`)}</strong>
+          <p class="helper">${escapeHtml(t("statistics.closed", {}, payload))}</p>
+        </article>
+        <article class="statistics-kpi-card">
+          <span class="eyebrow">${escapeHtml(t("statistics.last30", {}, payload))}</span>
+          <strong>${escapeHtml(`${overview.closedDaysLast30 || 0}/30`)}</strong>
+          <p class="helper">${escapeHtml(t("statistics.closed", {}, payload))}</p>
+        </article>
+        <article class="statistics-kpi-card">
+          <span class="eyebrow">${escapeHtml(t("statistics.completionRate", {}, payload))}</span>
+          <strong>${escapeHtml(`${overview.completionRateLast30 || 0}%`)}</strong>
+          <p class="helper">${escapeHtml(t("statistics.timelineTitle", {}, payload))}</p>
+        </article>
+        <article class="statistics-kpi-card">
+          <span class="eyebrow">${escapeHtml(t("statistics.skippedNew", {}, payload))}</span>
+          <strong>${escapeHtml(String(overview.skippedNewLast30 || 0))}</strong>
+          <p class="helper">${escapeHtml(t("statistics.recentClosureSkipped", {}, payload))}</p>
+        </article>
+      </section>
+
+      <section class="statistics-panel-block">
+        <div class="statistics-block-head">
+          <div>
+            <span class="eyebrow">${escapeHtml(t("statistics.timelineTitle", {}, payload))}</span>
+            <h3>${escapeHtml(t("statistics.timelineTitle", {}, payload))}</h3>
+          </div>
+          <p class="helper">${escapeHtml(t("statistics.timelineHelp", {}, payload))}</p>
+        </div>
+        <div class="statistics-timeline-grid">
+          ${timeline
+            .map((entry) => {
+              const statusKey = entry.closed ? "statistics.closed" : entry.isToday ? "statistics.todayPending" : "statistics.missed";
+              const title = `${formatDateKey(entry.date, payload, {
+                weekday: "short",
+                month: "short",
+                day: "numeric",
+              })} - ${t(statusKey, {}, payload)}`;
+              return `
+                <article
+                  class="statistics-day-cell ${entry.closed ? "is-closed" : "is-open"} ${entry.skippedNew ? "is-skipped" : ""} ${entry.isToday ? "is-today" : ""}"
+                  title="${escapeHtml(title)}"
+                >
+                  <strong>${escapeHtml(String(entry.dayOfMonth || ""))}</strong>
+                  <span>${escapeHtml(entry.closed ? "•" : " ")}</span>
+                </article>
+              `;
+            })
+            .join("")}
+        </div>
+      </section>
+
+      <section class="statistics-panel-block">
+        <div class="statistics-block-head">
+          <div>
+            <span class="eyebrow">${escapeHtml(t("statistics.recentClosures", {}, payload))}</span>
+            <h3>${escapeHtml(t("statistics.recentClosures", {}, payload))}</h3>
+          </div>
+        </div>
+        ${
+          recentClosures.length
+            ? `
+              <div class="statistics-closure-list">
+                ${recentClosures
+                  .map(
+                    (entry) => `
+                      <article class="statistics-closure-row">
+                        <div>
+                          <strong>${escapeHtml(formatDateKey(entry.date, payload, { weekday: "short", month: "short", day: "numeric" }))}</strong>
+                          <p class="helper">${escapeHtml(entry.skippedNew ? t("statistics.recentClosureSkipped", {}, payload) : t("statistics.recentClosureFull", {}, payload))}</p>
+                        </div>
+                        <div class="statistics-closure-meta">
+                          <span>${escapeHtml(`J${entry.programDayIndex || 0}`)}</span>
+                          <span>${escapeHtml(formatTimestampTime(entry.completedAt, payload))}</span>
+                        </div>
+                      </article>
+                    `,
+                  )
+                  .join("")}
+              </div>
+            `
+            : `<p class="helper">${escapeHtml(t("statistics.recentClosuresEmpty", {}, payload))}</p>`
+        }
+      </section>
+    </div>
+  `;
+}
+
+function getCurrentPointDetails(plan, payload = state.payload) {
+  const totalHalfPages = Math.max(1, Number(plan?.summary?.totalHalfPages || 1));
+  const rawCurrentHalfPage = Number(plan?.summary?.currentHalfPage || 1);
+  const safeCurrentHalfPage = Math.min(Math.max(rawCurrentHalfPage, 1), totalHalfPages);
+  const direction = plan?.summary?.phaseDirection || "forward";
+  const unitInPage = ((sequenceHalfPageToPhysicalHalfPage(safeCurrentHalfPage, totalHalfPages, direction) - 1) % PROGRESS_UNITS_PER_PAGE) + 1;
+  const isLowerHalf = unitInPage > PROGRESS_UNITS_PER_PAGE / 2;
+  const isFinished = rawCurrentHalfPage > totalHalfPages;
+  const language = getLanguage(payload);
+  let zoneLabel;
+  if (isFinished) {
+    zoneLabel = t("settings.phaseStatusDone", {}, payload);
+  } else if (language === "en") {
+    zoneLabel = isLowerHalf ? "Lower half" : "Upper half";
+  } else if (language === "ar") {
+    zoneLabel = isLowerHalf ? "النصف الأسفل" : "النصف الأعلى";
+  } else {
+    zoneLabel = isLowerHalf ? "Moitié basse" : "Moitié haute";
+  }
+
+  return {
+    zoneLabel,
+  };
+}
+
 function renderHero(payload) {
   const firstName = normalizeFirstName(payload?.settings?.firstName || "");
+  const sparkle = '<span class="hero-title-sparkle" aria-hidden="true">✨</span>';
   if (getLanguage(payload) === "en") {
     $("#hero-title").innerHTML = firstName
-      ? `Bismillah, here is your plan for today ${escapeHtml(firstName)}!&#10024;`
-      : "Bismillah, here is your plan for today!&#10024;";
+      ? `Bismillah, here is your <span class="ui-emphasis title-emphasis">plan for today</span>, ${escapeHtml(firstName)}!${sparkle}`
+      : `Bismillah, here is your <span class="ui-emphasis title-emphasis">plan for today</span>!${sparkle}`;
     return;
   }
 
   $("#hero-title").innerHTML = firstName
-    ? `Bismillah, voici ton plan du jour ${escapeHtml(firstName)} !&#10024;`
-    : "Bismillah, voici ton plan du jour !&#10024;";
+    ? `Bismillah, voici ton <span class="ui-emphasis title-emphasis">plan du jour</span>, ${escapeHtml(firstName)} !${sparkle}`
+    : `Bismillah, voici ton <span class="ui-emphasis title-emphasis">plan du jour</span> !${sparkle}`;
 }
 
 function renderDayStatus(payload) {
@@ -4863,7 +6668,8 @@ function renderSettingsPreview(payload) {
     .join("");
 }
 
-function renderErrorTracking(payload) {
+function renderErrorTracking(payload, options = {}) {
+  const { forceFull = false } = options;
   const totalPages = payload.errorTracking.totalPages;
   const summary = payload.errorTracking.summary;
   const pageErrors = payload.pageErrors || {};
@@ -4879,6 +6685,12 @@ function renderErrorTracking(payload) {
     Number.isInteger(state.activePage) && state.activePage >= 1 && state.activePage <= totalPages ? state.activePage : null;
 
   renderProgramLegend(plan);
+  renderPageQuickActions(payload);
+
+  if (!forceFull && isErrorTrackingRenderReusable(payload)) {
+    syncActivePageCellHighlight();
+    return;
+  }
 
   let effectiveLearnedPages = 0;
   for (let page = 1; page <= totalPages; page += 1) {
@@ -4976,7 +6788,6 @@ function renderErrorTracking(payload) {
     </article>
   `;
 
-  renderPageQuickActions(payload);
   $("#error-grid").innerHTML = juzGroups
     .map((group) => `
       <section class="juz-group ${group.collapsed ? "collapsed" : "expanded"}" data-juz-group="${escapeHtml(group.juz)}">
@@ -5007,6 +6818,8 @@ function renderErrorTracking(payload) {
       </section>
     `)
     .join("");
+  rememberErrorTrackingRender(payload);
+  syncActivePageCellHighlight();
 }
 
 function renderSurahGame(payload) {
@@ -5016,6 +6829,7 @@ function renderSurahGame(payload) {
   }
 
   const corpus = ensureSurahGameState(payload);
+  const isMobileViewport = typeof window !== "undefined" && window.matchMedia("(max-width: 720px)").matches;
   const gameMode = state.surahGame.gameMode || "quiz";
   const question = state.surahGame.question;
   const memoryRound = state.surahGame.memoryRound;
@@ -5032,6 +6846,99 @@ function renderSurahGame(payload) {
     heatTier.next === null
       ? t("surahs.heatMax", {}, payload)
       : t("surahs.heatNext", { count: heatTier.remaining }, payload);
+  const settingsPanelMarkup = `
+    <section class="surah-setup-shell">
+      <div class="surah-setup-grid">
+        <div class="surah-setup-block surah-setup-block-mode">
+          <div class="surah-setup-head">
+            <span class="eyebrow">${escapeHtml(t("surahs.playModeLabel", {}, payload))}</span>
+          </div>
+          ${buildSurahGameModeMarkup(payload, { compact: true })}
+        </div>
+        <div class="surah-setup-block surah-setup-block-range">
+          <div class="surah-setup-head">
+            <span class="eyebrow">${escapeHtml(t("surahs.rangeLabel", {}, payload))}</span>
+            <span class="surah-setup-summary">${escapeHtml(corpus.label)}</span>
+          </div>
+          <div class="surah-range-controls compact">
+            <label class="surah-select-field compact">
+              <span>${escapeHtml(t("surahs.rangeFrom", {}, payload))}</span>
+              <select data-surah-game-select="start">${buildSurahSelectOptions(corpus.startId)}</select>
+            </label>
+            <label class="surah-select-field compact">
+              <span>${escapeHtml(t("surahs.rangeTo", {}, payload))}</span>
+              <select data-surah-game-select="end">${buildSurahSelectOptions(corpus.endId)}</select>
+            </label>
+            <button
+              class="secondary-button surah-range-button compact ${isFullRange ? "active" : ""}"
+              type="button"
+              data-surah-game-action="full-range"
+            >
+              ${escapeHtml(t("surahs.rangeQuickAll", {}, payload))}
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+  const settingsMarkup =
+    state.surahGame.isStarted && isMobileViewport
+      ? `
+        <section class="surah-settings-shell">
+          <details class="surah-settings-details">
+            <summary class="surah-settings-summary">
+              <div class="surah-settings-summary-copy">
+                <span class="eyebrow">${escapeHtml(t("surahs.settingsCompactLabel", {}, payload))}</span>
+                <strong>${escapeHtml(t(gameMode === "memory" ? "surahs.playModeMemory" : "surahs.playModeQuiz", {}, payload))}</strong>
+              </div>
+              <span class="surah-settings-summary-meta">${escapeHtml(corpus.label)}</span>
+            </summary>
+            <div class="surah-settings-stack">
+              ${settingsPanelMarkup}
+            </div>
+          </details>
+        </section>
+      `
+      : `
+        <section class="surah-settings-shell surah-settings-shell-open">
+          <div class="surah-settings-stack">
+            ${settingsPanelMarkup}
+          </div>
+        </section>
+      `;
+  const liveStatusValue =
+    gameMode === "memory" && memoryRound?.phase === "preview"
+      ? t("surahs.memoryCountdownValue", { count: getSurahMemoryCountdown(memoryRound).remainingSeconds }, payload)
+      : t("surahs.streakValue", { count: state.surahGame.streak }, payload);
+  const liveStripMarkup = `
+    <section class="surah-game-livebar">
+      <article class="surah-live-pill">
+        <span>${escapeHtml(t("surahs.playModeLabel", {}, payload))}</span>
+        <strong>${escapeHtml(t(gameMode === "memory" ? "surahs.playModeMemory" : "surahs.playModeQuiz", {}, payload))}</strong>
+      </article>
+      <article class="surah-live-pill emphasis">
+        <span>${escapeHtml(t("surahs.rangeLabel", {}, payload))}</span>
+        <strong>${escapeHtml(corpus.label)}</strong>
+        <em>${escapeHtml(t("surahs.countValue", { count: corpus.surahs.length }, payload))}</em>
+      </article>
+      <article class="surah-live-pill heat tier-${escapeHtml(heatTier.theme)}">
+        <span>${escapeHtml(t("surahs.heatLabel", {}, payload))}</span>
+        <strong>${escapeHtml(liveStatusValue)}</strong>
+        <em>${escapeHtml(t(heatTier.key, {}, payload))}</em>
+      </article>
+    </section>
+  `;
+  const topActionMarkup = state.surahGame.isStarted
+    ? `
+        <button class="secondary-button" type="button" data-surah-game-action="restart">
+          ${escapeHtml(t("surahs.restart", {}, payload))}
+        </button>
+      `
+    : `
+        <button class="primary-button" type="button" data-surah-game-action="start" ${canStartCurrentMode ? "" : "disabled"}>
+          ${escapeHtml(t("surahs.playButton", {}, payload))}
+        </button>
+      `;
 
   const questionMarkup = gameMode === "memory" && !canStartMemory
     ? buildSurahMemoryMarkup(payload, corpus, heatTier)
@@ -5050,9 +6957,6 @@ function renderSurahGame(payload) {
       <section class="surah-empty-state">
         <h3>${escapeHtml(t("surahs.readyTitle", {}, payload))}</h3>
         <p class="muted">${escapeHtml(t(gameMode === "memory" ? "surahs.readyHelpMemory" : "surahs.readyHelpQuiz", {}, payload))}</p>
-        <button class="primary-button" type="button" data-surah-game-action="start" ${canStartCurrentMode ? "" : "disabled"}>
-          ${escapeHtml(t("surahs.playButton", {}, payload))}
-        </button>
       </section>
     `
     : gameMode === "memory"
@@ -5149,50 +7053,24 @@ function renderSurahGame(payload) {
       <section class="surah-empty-state">
         <h3>${escapeHtml(t("surahs.readyTitle", {}, payload))}</h3>
         <p class="muted">${escapeHtml(t(gameMode === "memory" ? "surahs.readyHelpMemory" : "surahs.readyHelpQuiz", {}, payload))}</p>
-        <button class="primary-button" type="button" data-surah-game-action="start">
-          ${escapeHtml(t("surahs.playButton", {}, payload))}
-        </button>
       </section>
     `;
 
   container.innerHTML = `
-    <div class="surah-game-shell tier-${escapeHtml(heatTier.theme)}">
+    <div class="surah-game-shell tier-${escapeHtml(heatTier.theme)} ${state.surahGame.isStarted ? "is-started" : "is-idle"} mode-${escapeHtml(gameMode)}">
       <div class="section-head surah-game-head">
         <div>
           <p class="eyebrow">${escapeHtml(t("surahs.eyebrow", {}, payload))}</p>
-          <h2>${escapeHtml(t("surahs.title", {}, payload))}</h2>
+          <h2>${renderUiRichText(t("surahs.title", {}, payload))}</h2>
         </div>
-        <button class="secondary-button" type="button" data-surah-game-action="restart">
-          ${escapeHtml(t("surahs.restart", {}, payload))}
-        </button>
+        <div class="surah-game-head-actions">
+          ${topActionMarkup}
+        </div>
       </div>
-      <p class="muted surah-game-help">${escapeHtml(t("surahs.help", {}, payload))}</p>
+      <p class="muted surah-game-help">${renderUiRichText(t("surahs.help", {}, payload))}</p>
 
-      ${buildSurahGameModeMarkup(payload)}
-
-      <section class="surah-range-shell">
-        <div class="surah-range-copy">
-          <span class="eyebrow">${escapeHtml(t("surahs.rangeLabel", {}, payload))}</span>
-          <p class="helper">${escapeHtml(t("surahs.rangeHint", {}, payload))}</p>
-        </div>
-        <div class="surah-range-controls">
-          <label class="surah-select-field">
-            <span>${escapeHtml(t("surahs.rangeFrom", {}, payload))}</span>
-            <select data-surah-game-select="start">${buildSurahSelectOptions(corpus.startId)}</select>
-          </label>
-          <label class="surah-select-field">
-            <span>${escapeHtml(t("surahs.rangeTo", {}, payload))}</span>
-            <select data-surah-game-select="end">${buildSurahSelectOptions(corpus.endId)}</select>
-          </label>
-          <button
-            class="secondary-button surah-range-button ${isFullRange ? "active" : ""}"
-            type="button"
-            data-surah-game-action="full-range"
-          >
-            ${escapeHtml(t("surahs.rangeQuickAll", {}, payload))}
-          </button>
-        </div>
-      </section>
+      ${settingsMarkup}
+      ${liveStripMarkup}
 
       <section class="surah-game-meta">
         <article class="surah-meta-card">
@@ -5259,6 +7137,260 @@ function renderSurahGame(payload) {
   }
 }
 
+function buildOnboardingPreviewMarkup(stepKey, payload = state.payload) {
+  if (stepKey === "language") {
+    const selectedLanguage = getLanguage(payload);
+    return `
+      <div class="onboarding-preview language">
+        <div class="onboarding-language-grid">
+          <button class="onboarding-language-chip ${selectedLanguage === "fr" ? "active" : ""}" type="button" data-onboarding-language="fr">
+            <strong>Français</strong>
+            <span>Interface en français</span>
+          </button>
+          <button class="onboarding-language-chip ${selectedLanguage === "en" ? "active" : ""}" type="button" data-onboarding-language="en">
+            <strong>English</strong>
+            <span>Interface in English</span>
+          </button>
+          <button class="onboarding-language-chip ${selectedLanguage === "ar" ? "active" : ""}" type="button" data-onboarding-language="ar">
+            <strong>العربية</strong>
+            <span>واجهة عربية</span>
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  if (stepKey === "today") {
+    return `
+      <div class="onboarding-preview today">
+        <div class="onboarding-preview-route">
+          <span class="active"></span>
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+        <div class="onboarding-preview-card">
+          <p class="eyebrow">${escapeHtml(t("today.focusLabel", {}, payload))}</p>
+          <strong>${escapeHtml(t("route.recentTitle", {}, payload))}</strong>
+          <small>${escapeHtml(t("today.focusValidate", {}, payload))}</small>
+        </div>
+      </div>
+    `;
+  }
+
+  if (stepKey === "pages") {
+    return `
+      <div class="onboarding-preview pages">
+        <div class="onboarding-preview-grid">
+          <span class="learned"></span>
+          <span class="learned"></span>
+          <span class="fragile"></span>
+          <span class="neutral"></span>
+          <span class="neutral"></span>
+          <span class="fragile"></span>
+          <span class="learned"></span>
+          <span class="neutral"></span>
+        </div>
+        <div class="onboarding-preview-page">
+          <div class="onboarding-preview-line short"></div>
+          <div class="onboarding-preview-line"></div>
+          <div class="onboarding-preview-line medium"></div>
+        </div>
+      </div>
+    `;
+  }
+
+  if (stepKey === "review") {
+    return `
+      <div class="onboarding-preview review">
+        <div class="onboarding-preview-review-page">
+          <div class="onboarding-preview-line medium"></div>
+          <div class="onboarding-preview-mask"></div>
+          <div class="onboarding-preview-line"></div>
+          <div class="onboarding-preview-mask short"></div>
+        </div>
+        <div class="onboarding-preview-review-actions">
+          <span>${escapeHtml(t("review.revealButton", {}, payload))}</span>
+          <span class="success">${escapeHtml(t("review.successButton", {}, payload))}</span>
+          <span class="danger">${escapeHtml(t("review.failureButton", {}, payload))}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="onboarding-preview surahs">
+      <div class="onboarding-preview-mode">
+        <span>${escapeHtml(t("surahs.playModeQuiz", {}, payload))}</span>
+        <span>${escapeHtml(t("surahs.rangeLabel", {}, payload))}</span>
+      </div>
+      <div class="onboarding-preview-question">
+        <p>${escapeHtml(t("surahs.answerLabel", {}, payload))}</p>
+        <div class="onboarding-preview-choice-row">
+          <span class="good"></span>
+          <span></span>
+        </div>
+        <div class="onboarding-preview-choice-row">
+          <span></span>
+          <span></span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function getOnboardingSteps(payload = state.payload) {
+  const language = getLanguage(payload);
+
+  if (language === "ar") {
+    return [
+      {
+        key: "language",
+        title: 'اختر لغة التطبيق',
+        body: 'اختر اللغة التي تريد استعمالها داخل Dabt. يمكنك تغييرها لاحقا من قسم "الاعدادات".',
+      },
+      {
+        key: "today",
+        title: 'قسم "اليوم" يوجهك خطوة بخطوة',
+        body: 'قسم "اليوم" ينظم يومك وفق منطق التكرار المتباعد: ماذا تقرأ الآن، بأي ترتيب تتقدم، ومتى تثبت كل كتلة.',
+      },
+      {
+        key: "pages",
+        title: 'قسم "الصفحات" يعطيك نظرة شاملة على المصحف',
+        body: 'قسم "الصفحات" يسمح لك بفتح الصفحة الحقيقية من القرآن، تحديد الخطأ بدقة، ثم متابعة حالتك صفحة صفحة وجزءا جزءا.',
+      },
+      {
+        key: "review",
+        title: 'قسم "مراجعة الاخطاء" يعيد المناطق الضعيفة',
+        body: 'قسم "مراجعة الاخطاء" يستخدم FSRS ليعيد كل خطأ في افضل وقت بحسب اجاباتك، مباشرة على صفحة القرآن.',
+      },
+      {
+        key: "surahs",
+        title: 'قسم "اللعبة" يثبت ترتيب السور',
+        body: 'قسم "اللعبة" يقدم لك طريقتين للتدريب: معرفة السورة التالية او ترتيب سلسلة قصيرة بالشكل الصحيح.',
+      },
+    ];
+  }
+
+  if (language === "en") {
+    return [
+      {
+        key: "language",
+        title: 'Choose your app language',
+        body: 'Choose the language you want to use in Dabt. You can always change it later from the "Settings" section.',
+      },
+      {
+        key: "today",
+        title: 'The "Today" section guides you block by block',
+        body: 'The "Today" section organizes your day with a spaced repetition flow: what to recite now, which order to follow, and how to validate each block at the right moment.',
+      },
+      {
+        key: "pages",
+        title: 'The "Pages" section shows the mushaf at a glance',
+        body: 'The "Pages" section lets you open the real Quran page, place a precise mistake, and track your state page by page, then juz by juz.',
+      },
+      {
+        key: "review",
+        title: 'The "Review errors" section revisits weak spots',
+        body: 'The "Review errors" section uses spaced repetition with FSRS to bring each mistake back at the best moment based on your answers, directly on the Quran page.',
+      },
+      {
+        key: "surahs",
+        title: 'The "Mini game" section strengthens surah order',
+        body: 'The "Mini game" section gives you two ways to practice: find the next surah or reorder a short sequence correctly.',
+      },
+    ];
+  }
+
+  return [
+    {
+      key: "language",
+      title: 'Choisis la langue de l\'application',
+      body: 'Choisis la langue que tu veux utiliser dans Dabt. Tu pourras la changer plus tard depuis la section "[[Paramètres]]".',
+    },
+    {
+      key: "today",
+      title: 'La section "[[Aujourd\'hui]]" te guide bloc par bloc',
+      body: 'La section "[[Aujourd\'hui]]" organise ta journée avec une logique de [[répétition espacée]] : quoi réciter maintenant, dans quel ordre avancer, puis comment valider chaque bloc au bon moment.',
+    },
+    {
+      key: "pages",
+      title: 'La section "[[Pages]]" te montre le mushaf d\'un seul coup d\'œil',
+      body: 'La section "[[Pages]]" te permet d\'ouvrir la vraie page du Coran, placer une [[erreur précise]] et suivre ton état page par page, puis juz par juz.',
+    },
+    {
+      key: "review",
+      title: 'La section "[[Revoir ses erreurs]]" retravaille les zones fragiles',
+      body: 'La section "[[Revoir ses erreurs]]" utilise la [[répétition espacée]] avec [[FSRS]] pour faire revenir chaque erreur au meilleur moment selon tes réponses, directement sur la page du Coran.',
+    },
+    {
+      key: "surahs",
+      title: 'La section "[[Mini jeu]]" consolide l\'ordre des sourates',
+      body: 'La section "[[Mini jeu]]" te propose deux façons de t\'entraîner : retrouver la sourate suivante ou remettre une série dans le bon ordre.',
+    },
+  ];
+}
+
+function renderOnboarding(payload = state.payload) {
+  const container = $("#mobile-onboarding-root");
+  if (!container) {
+    return;
+  }
+
+  document.body.classList.toggle("onboarding-open", Boolean(state.onboarding.open));
+
+  if (!state.onboarding.open) {
+    container.hidden = true;
+    container.innerHTML = "";
+    return;
+  }
+
+  const steps = getOnboardingSteps(payload);
+  const safeIndex = Math.max(0, Math.min(state.onboarding.stepIndex || 0, steps.length - 1));
+  state.onboarding.stepIndex = safeIndex;
+  const currentStep = steps[safeIndex];
+  const isLastStep = safeIndex === steps.length - 1;
+
+  container.hidden = false;
+  container.innerHTML = `
+    <div class="onboarding-overlay">
+      <div class="onboarding-backdrop"></div>
+      <section class="onboarding-shell">
+        <div class="onboarding-topline">
+          <p class="eyebrow">Dabt</p>
+          <span class="onboarding-step-label">${escapeHtml(t("onboarding.step", { current: safeIndex + 1, total: steps.length }, payload))}</span>
+        </div>
+        <div class="onboarding-progress">
+          ${steps
+            .map(
+              (_step, index) => `
+                <button
+                  class="onboarding-progress-dot ${index === safeIndex ? "active" : ""}"
+                  type="button"
+                  data-onboarding-step="${escapeHtml(index)}"
+                  aria-label="${escapeHtml(t("onboarding.step", { current: index + 1, total: steps.length }, payload))}"
+                ></button>
+              `,
+            )
+            .join("")}
+        </div>
+        <div class="onboarding-copy">
+          <h2>${renderUiRichText(currentStep.title)}</h2>
+          <p>${renderUiRichText(currentStep.body)}</p>
+        </div>
+        ${buildOnboardingPreviewMarkup(currentStep.key, payload)}
+        <div class="onboarding-actions">
+          <button class="secondary-button" type="button" data-onboarding-action="skip">${escapeHtml(t("onboarding.skip", {}, payload))}</button>
+          <button class="primary-button" type="button" data-onboarding-action="${isLastStep ? "finish" : "next"}">
+            ${escapeHtml(t(isLastStep ? "onboarding.start" : "onboarding.next", {}, payload))}
+          </button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
 function renderCards(payload) {
   const { blocks, order } = payload.plan;
   const markup = order.map((blockKey) => {
@@ -5278,51 +7410,38 @@ function renderCards(payload) {
 }
 
 function fillForm(payload) {
+  const notifications = getNotificationPreferences(payload);
   $("#first-name").value = payload.settings.firstName || "";
   $("#language").value = getLanguage(payload);
   $("#program-mode").value = payload.settings.programMode || "forward";
   if ($("#phase-index")) {
     $("#phase-index").value = String(payload.progress.phaseIndex || 1);
   }
-  $("#daily-new-half-pages").value = payload.settings.dailyNewHalfPages;
+  $("#daily-new-half-pages").value = formatInputPagesValueFromHalfPages(payload.settings.dailyNewHalfPages);
   $("#program-day-index").value = payload.progress.programDayIndex;
   $("#total-half-pages").value = payload.settings.totalHalfPages;
+  $("#notifications-enabled").checked = notifications.enabled;
+  $("#notification-review-enabled").checked = notifications.reminders.review.enabled;
+  $("#notification-review-time").value = notifications.reminders.review.time;
+  $("#notification-morning-enabled").checked = notifications.reminders.newMorning.enabled;
+  $("#notification-morning-time").value = notifications.reminders.newMorning.time;
+  $("#notification-noon-enabled").checked = notifications.reminders.newNoon.enabled;
+  $("#notification-noon-time").value = notifications.reminders.newNoon.time;
+  $("#notification-evening-enabled").checked = notifications.reminders.newEvening.enabled;
+  $("#notification-evening-time").value = notifications.reminders.newEvening.time;
   renderPhaseProgressEditor(payload);
   syncCurrentPageMax();
   syncDailyNewPresets();
+  syncNotificationFormState();
+  renderNotificationRuntimeStatus(payload);
 }
 
 function bindPageCellSelection() {
-  $all("[data-page-cell]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const page = Number(button.dataset.pageCell);
-      state.activePage = page;
-      openPageEditor(page);
-      renderErrorTracking(state.payload);
-      renderPageEditorModal(state.payload);
-      bindPageQuickActions();
-      bindPageCellSelection();
-      bindPageEditorActions();
-      showToast(t("toast.pageSelected", { page }));
-    });
-  });
+  return;
 }
 
 function bindJuzGroupToggles() {
-  $all("[data-toggle-juz]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const juz = Number(button.dataset.toggleJuz);
-      if (!Number.isInteger(juz) || juz < 1) {
-        return;
-      }
-
-      state.collapsedJuzs[juz] = !state.collapsedJuzs[juz];
-      renderErrorTracking(state.payload);
-      bindJuzGroupToggles();
-      bindPageQuickActions();
-      bindPageCellSelection();
-    });
-  });
+  return;
 }
 
 function bindPageQuickActions() {
@@ -5331,6 +7450,7 @@ function bindPageQuickActions() {
       const page = Number(button.dataset.openPageEditor);
       state.activePage = page;
       openPageEditor(page);
+      ensureMushafPageData(page);
       renderPageEditorModal(state.payload);
       bindPageEditorActions();
     });
@@ -5340,13 +7460,8 @@ function bindPageQuickActions() {
     button.addEventListener("click", async () => {
       try {
         const page = Number(button.dataset.pageQuickClear);
-        state.payload = await api("/api/page-errors/clear", {
-          method: "POST",
-          body: JSON.stringify({
-            page,
-          }),
-        });
-        render();
+        state.payload = await dataClient.clearPageError(page);
+        refreshErrorExperience(state.payload);
         showToast(t("toast.errorsCleared", { page: button.dataset.pageQuickClear }));
       } catch (error) {
         showToast(error.message, true);
@@ -5357,9 +7472,7 @@ function bindPageQuickActions() {
   $all("[data-clear-active-page]").forEach((button) => {
     button.addEventListener("click", () => {
       state.activePage = null;
-      renderErrorTracking(state.payload);
-      bindPageQuickActions();
-      bindPageCellSelection();
+      refreshPagesQuickUi(state.payload);
     });
   });
 }
@@ -5370,10 +7483,18 @@ function bindPageEditorActions() {
     return;
   }
 
+  const frame = modal.querySelector(".page-editor-image-viewport");
+  const shell = modal.querySelector(".page-editor-shell");
+
   $all("[data-page-editor-close]").forEach((button) => {
     button.addEventListener("click", () => {
+      const shouldRefreshTracking = state.pageEditor.needsTrackingRefresh;
       closePageEditor();
       renderPageEditorModal(state.payload);
+      if (shouldRefreshTracking && state.activeView === "pages") {
+        renderErrorTracking(state.payload, { forceFull: true });
+        bindPageQuickActions();
+      }
     });
   });
 
@@ -5384,14 +7505,14 @@ function bindPageEditorActions() {
         state.pageEditor.rawRect = null;
         state.pageEditor.rect = null;
         state.pageEditor.anchor = null;
-      } else if (state.pageEditor.rawRect && stage) {
-        const snapped = snapPageEditorSelection(stage, state.pageEditor.rawRect, state.pageEditor.scope);
+      } else if (state.pageEditor.rawRect && frame) {
+        const snapped = snapPageEditorSelection(frame, state.pageEditor.rawRect, state.pageEditor.scope);
         state.pageEditor.rawRect = snapped.rawRect;
         state.pageEditor.rect = snapped.rect;
         state.pageEditor.anchor = snapped.anchor;
       }
-      renderPageEditorModal(state.payload);
-      bindPageEditorActions();
+      state.pageEditor.selectionOrigin = null;
+      updatePageEditorSelectionUi(state.payload, modal);
     });
   });
 
@@ -5406,13 +7527,18 @@ function bindPageEditorActions() {
       state.pageEditor.rawRect = null;
       state.pageEditor.rect = null;
       state.pageEditor.anchor = null;
-      renderPageEditorModal(state.payload);
-      bindPageEditorActions();
+      state.pageEditor.selectionOrigin = null;
+      updatePageEditorSelectionUi(state.payload, modal);
     });
   });
 
   $all("[data-page-editor-save]").forEach((button) => {
     button.addEventListener("click", async () => {
+      if (button.disabled) {
+        return;
+      }
+
+      button.disabled = true;
       try {
         const scope = state.pageEditor.scope || "word";
         const requiresSelection = scope !== "next-page-link";
@@ -5421,21 +7547,18 @@ function bindPageEditorActions() {
         }
 
         const page = state.pageEditor.page;
-        state.payload = await api("/api/page-errors", {
-          method: "POST",
-          body: JSON.stringify({
-            page,
-            scope,
-            rect: requiresSelection ? state.pageEditor.rect : null,
-            anchor: requiresSelection ? state.pageEditor.anchor : null,
-            note: state.pageEditor.note || "",
-          }),
+        state.payload = await dataClient.setPageError(page, {
+          scope,
+          rect: requiresSelection ? state.pageEditor.rect : null,
+          anchor: requiresSelection ? state.pageEditor.anchor : null,
+          note: state.pageEditor.note || "",
         });
+        state.pageEditor.needsTrackingRefresh = true;
         state.pageEditor.rawRect = null;
         state.pageEditor.rect = null;
         state.pageEditor.anchor = null;
         state.pageEditor.note = "";
-        render();
+        refreshPageEditorSurface(state.payload);
         showToast(
           t("toast.errorAdded", {
             severity: severityLabel(errorScopeToSeverity(scope)),
@@ -5444,75 +7567,200 @@ function bindPageEditorActions() {
         );
       } catch (error) {
         showToast(error.message, true);
+      } finally {
+        button.disabled = false;
       }
     });
   });
 
-  $all("[data-page-editor-delete-error]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      try {
-        const page = Number(button.dataset.pageEditorDeletePage);
-        const id = String(button.dataset.pageEditorDeleteError || "").trim();
-        if (!Number.isInteger(page) || page < 1 || !id) {
-          return;
-        }
-
-        state.payload = await api("/api/page-errors/delete", {
-          method: "POST",
-          body: JSON.stringify({
-            page,
-            id,
-          }),
-        });
-        render();
-        showToast(t("toast.errorDeleted", { page }));
-      } catch (error) {
-        showToast(error.message, true);
-      }
-    });
-  });
+  bindPageEditorDeleteButtons(modal);
 
   const stage = modal.querySelector("[data-page-editor-stage='true']");
   const selectionBox = modal.querySelector("#page-editor-selection-box");
 
-  if (!stage || !selectionBox) {
+  if (!stage || !selectionBox || !frame || !shell) {
     return;
   }
 
   if (state.pageEditor.scope === "next-page-link") {
-    selectionBox.classList.remove("active");
-    selectionBox.style.cssText = "";
+    state.pageEditor.selectionOrigin = null;
+    updatePageEditorSelectionUi(state.payload, modal);
     return;
   }
+
+  const bindToken = Symbol("page-editor-bind");
+  state.pageEditor.bindingToken = bindToken;
+  const requiresTouchGesture = isPageEditorTouchSelectionRequired();
+  let activePointerId = null;
+  let selectionTrackingAttached = false;
+  let longPressTimer = null;
+  let pendingTouch = null;
+  let pendingTouchObserversAttached = false;
+  let activeTouchTrackingAttached = false;
+
+  const isBindingActive = () => state.pageEditor.bindingToken === bindToken && modal.isConnected && frame.isConnected && stage.isConnected;
+  const setShellSelectionLock = (locked) => {
+    shell.classList.toggle("page-editor-no-select", Boolean(locked));
+  };
+  const clearLongPressTimer = () => {
+    if (longPressTimer) {
+      window.clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  };
+  const getTouchByIdentifier = (touchList, identifier) =>
+    Array.from(touchList || []).find((touch) => Number(touch.identifier) === Number(identifier)) || null;
+  const detachPendingTouchObservers = () => {
+    if (!pendingTouchObserversAttached) {
+      return;
+    }
+
+    window.removeEventListener("touchmove", observePendingTouchMove);
+    window.removeEventListener("touchend", cancelPendingTouchGesture);
+    window.removeEventListener("touchcancel", cancelPendingTouchGesture);
+    shell.removeEventListener("scroll", cancelPendingTouchGesture);
+    pendingTouchObserversAttached = false;
+  };
+  const clearPendingTouch = () => {
+    clearLongPressTimer();
+    detachPendingTouchObservers();
+    pendingTouch = null;
+    setShellSelectionLock(false);
+  };
+  const attachPendingTouchObservers = () => {
+    if (pendingTouchObserversAttached) {
+      return;
+    }
+
+    window.addEventListener("touchmove", observePendingTouchMove, { passive: true });
+    window.addEventListener("touchend", cancelPendingTouchGesture, { passive: true });
+    window.addEventListener("touchcancel", cancelPendingTouchGesture, { passive: true });
+    shell.addEventListener("scroll", cancelPendingTouchGesture, { passive: true });
+    pendingTouchObserversAttached = true;
+  };
+  const getTouchDistance = (touch, origin) => {
+    if (!touch || !origin) {
+      return 0;
+    }
+
+    return Math.hypot(Number(touch.clientX || 0) - Number(origin.clientX || 0), Number(touch.clientY || 0) - Number(origin.clientY || 0));
+  };
+  const isTouchInsideFrame = (touch) => {
+    if (!touch || !frame?.isConnected) {
+      return false;
+    }
+
+    const bounds = frame.getBoundingClientRect();
+    return touch.clientX >= bounds.left && touch.clientX <= bounds.right && touch.clientY >= bounds.top && touch.clientY <= bounds.bottom;
+  };
+  const detachSelectionTracking = () => {
+    if (!selectionTrackingAttached) {
+      return;
+    }
+
+    window.removeEventListener("pointermove", updateSelection);
+    window.removeEventListener("pointerup", finishSelection);
+    window.removeEventListener("pointercancel", finishSelection);
+    selectionTrackingAttached = false;
+  };
+  const attachSelectionTracking = () => {
+    if (selectionTrackingAttached) {
+      return;
+    }
+
+    window.addEventListener("pointermove", updateSelection, { passive: false });
+    window.addEventListener("pointerup", finishSelection);
+    window.addEventListener("pointercancel", finishSelection);
+    selectionTrackingAttached = true;
+  };
+  const detachActiveTouchTracking = () => {
+    if (!activeTouchTrackingAttached) {
+      return;
+    }
+
+    window.removeEventListener("touchmove", updateTouchSelection);
+    window.removeEventListener("touchend", finishTouchSelectionFromEvent);
+    window.removeEventListener("touchcancel", cancelTouchSelection);
+    activeTouchTrackingAttached = false;
+  };
+  const attachActiveTouchTracking = () => {
+    if (activeTouchTrackingAttached) {
+      return;
+    }
+
+    window.addEventListener("touchmove", updateTouchSelection, { passive: false });
+    window.addEventListener("touchend", finishTouchSelectionFromEvent, { passive: false });
+    window.addEventListener("touchcancel", cancelTouchSelection, { passive: false });
+    activeTouchTrackingAttached = true;
+  };
+  const activateSelection = (pointerId, point) => {
+    if (!isBindingActive()) {
+      return;
+    }
+
+    activePointerId = pointerId;
+    state.pageEditor.selectionOrigin = point;
+    const snapped = snapPageEditorSelection(frame, buildPointRect(point), state.pageEditor.scope);
+    state.pageEditor.rawRect = snapped.rawRect;
+    state.pageEditor.rect = snapped.rect;
+    state.pageEditor.anchor = snapped.anchor;
+    stage.classList.add("is-selecting");
+    selectionBox.classList.add("active");
+    selectionBox.style.cssText = selectionRectStyle(state.pageEditor.rect);
+    if (pointerId !== undefined && pointerId !== null) {
+      stage.setPointerCapture?.(pointerId);
+    }
+    attachSelectionTracking();
+    updatePageEditorSelectionUi(state.payload, modal);
+  };
 
   const beginSelection = (event) => {
     if (event.button !== undefined && event.button !== 0) {
       return;
     }
 
-    const point = getNormalizedPointerPosition(event, stage);
-    state.pageEditor.selectionOrigin = point;
-    const snapped = snapPageEditorSelection(stage, buildPointRect(point), state.pageEditor.scope);
-    state.pageEditor.rawRect = snapped.rawRect;
-    state.pageEditor.rect = snapped.rect;
-    state.pageEditor.anchor = snapped.anchor;
-    selectionBox.classList.add("active");
-    selectionBox.style.cssText = selectionRectStyle(state.pageEditor.rect);
-    stage.setPointerCapture?.(event.pointerId);
+    if (!isBindingActive()) {
+      return;
+    }
+
+    const point = getNormalizedPointerPosition(event, frame);
+    const isTouchLike = event.pointerType === "touch" || event.pointerType === "pen";
+    if (state.pageEditor.scope === "next-page-link") {
+      return;
+    }
+    if (!requiresTouchGesture || !isTouchLike) {
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+      activateSelection(event.pointerId, point);
+    }
   };
 
   const updateSelection = (event) => {
+    if (!isBindingActive()) {
+      detachSelectionTracking();
+      return;
+    }
+
     if (!state.pageEditor.selectionOrigin) {
       return;
     }
 
-    const point = getNormalizedPointerPosition(event, stage);
+    if (activePointerId !== null && event.pointerId !== activePointerId) {
+      return;
+    }
+
+    if (event.cancelable) {
+      event.preventDefault();
+    }
+
+    const point = getNormalizedPointerPosition(event, frame);
     const midpoint = {
       x: (state.pageEditor.selectionOrigin.x + point.x) / 2,
       y: (state.pageEditor.selectionOrigin.y + point.y) / 2,
     };
     const rawRect = buildNormalizedRectFromPoints(state.pageEditor.selectionOrigin, point) || buildPointRect(midpoint);
-    const snapped = snapPageEditorSelection(stage, rawRect, state.pageEditor.scope);
+    const snapped = snapPageEditorSelection(frame, rawRect, state.pageEditor.scope);
     state.pageEditor.rawRect = snapped.rawRect;
     state.pageEditor.rect = snapped.rect;
     state.pageEditor.anchor = snapped.anchor;
@@ -5521,54 +7769,242 @@ function bindPageEditorActions() {
   };
 
   const finishSelection = (event) => {
-    if (!state.pageEditor.selectionOrigin) {
+    if (!isBindingActive()) {
+      detachSelectionTracking();
       return;
     }
 
-    const point = getNormalizedPointerPosition(event, stage);
+    if (activePointerId !== null && event.pointerId !== activePointerId) {
+      return;
+    }
+
+    if (event.cancelable) {
+      event.preventDefault();
+    }
+
+    const point = getNormalizedPointerPosition(event, frame);
     const midpoint = {
       x: (state.pageEditor.selectionOrigin.x + point.x) / 2,
       y: (state.pageEditor.selectionOrigin.y + point.y) / 2,
     };
     const rawRect = buildNormalizedRectFromPoints(state.pageEditor.selectionOrigin, point) || buildPointRect(midpoint);
-    const snapped = snapPageEditorSelection(stage, rawRect, state.pageEditor.scope);
+    const snapped = snapPageEditorSelection(frame, rawRect, state.pageEditor.scope);
     state.pageEditor.selectionOrigin = null;
     state.pageEditor.rawRect = snapped.rawRect;
     state.pageEditor.rect = snapped.rect;
     state.pageEditor.anchor = snapped.anchor;
+    activePointerId = null;
+    stage.classList.remove("is-selecting");
+    detachSelectionTracking();
     stage.releasePointerCapture?.(event.pointerId);
-    renderPageEditorModal(state.payload);
-    bindPageEditorActions();
+    updatePageEditorSelectionUi(state.payload, modal);
   };
 
-  stage.addEventListener("pointerdown", beginSelection);
-  stage.addEventListener("pointermove", updateSelection);
-  stage.addEventListener("pointerup", finishSelection);
-  stage.addEventListener("pointercancel", finishSelection);
+  updatePageEditorSelectionUi(state.payload, modal);
+
+  if (!requiresTouchGesture) {
+    stage.addEventListener("pointerdown", beginSelection);
+    return;
+  }
+
+  const finishTouchSelection = (touch) => {
+    if (!state.pageEditor.selectionOrigin) {
+      detachActiveTouchTracking();
+      clearPendingTouch();
+      updatePageEditorSelectionUi(state.payload, modal);
+      return;
+    }
+
+    const point = getNormalizedTouchPosition(touch || pendingTouch, frame);
+    const midpoint = {
+      x: (state.pageEditor.selectionOrigin.x + point.x) / 2,
+      y: (state.pageEditor.selectionOrigin.y + point.y) / 2,
+    };
+    const rawRect = buildNormalizedRectFromPoints(state.pageEditor.selectionOrigin, point) || buildPointRect(midpoint);
+    const snapped = snapPageEditorSelection(frame, rawRect, state.pageEditor.scope);
+    state.pageEditor.selectionOrigin = null;
+    state.pageEditor.rawRect = snapped.rawRect;
+    state.pageEditor.rect = snapped.rect;
+    state.pageEditor.anchor = snapped.anchor;
+    activePointerId = null;
+    stage.classList.remove("is-selecting");
+    detachActiveTouchTracking();
+    clearPendingTouch();
+    updatePageEditorSelectionUi(state.payload, modal);
+  };
+  const cancelTouchSelection = () => {
+    stage.classList.remove("is-selecting");
+    state.pageEditor.selectionOrigin = null;
+    activePointerId = null;
+    detachActiveTouchTracking();
+    clearPendingTouch();
+    updatePageEditorSelectionUi(state.payload, modal);
+  };
+  const activateTouchSelection = () => {
+    if (!isBindingActive() || !pendingTouch) {
+      return;
+    }
+
+    detachPendingTouchObservers();
+    clearLongPressTimer();
+    setShellSelectionLock(true);
+    const point = getNormalizedTouchPosition(pendingTouch, frame);
+    activePointerId = Number(pendingTouch.identifier);
+    state.pageEditor.selectionOrigin = point;
+    const snapped = snapPageEditorSelection(frame, buildPointRect(point), state.pageEditor.scope);
+    state.pageEditor.rawRect = snapped.rawRect;
+    state.pageEditor.rect = snapped.rect;
+    state.pageEditor.anchor = snapped.anchor;
+    stage.classList.add("is-selecting");
+    selectionBox.classList.add("active");
+    selectionBox.style.cssText = selectionRectStyle(state.pageEditor.rect);
+    attachActiveTouchTracking();
+    updatePageEditorSelectionUi(state.payload, modal);
+  };
+  const observePendingTouchMove = (event) => {
+    if (!isBindingActive() || !pendingTouch || state.pageEditor.selectionOrigin) {
+      clearPendingTouch();
+      return;
+    }
+
+    const touch = getTouchByIdentifier(event.touches, pendingTouch.identifier);
+    if (!touch) {
+      clearPendingTouch();
+      return;
+    }
+
+    if (getTouchDistance(touch, pendingTouch) > TOUCH_SELECTION_MOVE_PX) {
+      clearPendingTouch();
+    }
+  };
+  const cancelPendingTouchGesture = (event) => {
+    if (!pendingTouch) {
+      return;
+    }
+
+    if (event?.type === "touchend" || event?.type === "touchcancel") {
+      const touch = getTouchByIdentifier(event.changedTouches, pendingTouch.identifier);
+      if (!touch) {
+        return;
+      }
+    }
+
+    clearPendingTouch();
+  };
+  const updateTouchSelection = (event) => {
+    if (!isBindingActive()) {
+      cancelTouchSelection();
+      return;
+    }
+
+    if (!state.pageEditor.selectionOrigin) {
+      return;
+    }
+
+    const touch = getTouchByIdentifier(event.touches, activePointerId);
+    if (!touch) {
+      return;
+    }
+
+    if (event.cancelable) {
+      event.preventDefault();
+    }
+
+    const point = getNormalizedTouchPosition(touch, frame);
+    const midpoint = {
+      x: (state.pageEditor.selectionOrigin.x + point.x) / 2,
+      y: (state.pageEditor.selectionOrigin.y + point.y) / 2,
+    };
+    const rawRect = buildNormalizedRectFromPoints(state.pageEditor.selectionOrigin, point) || buildPointRect(midpoint);
+    const snapped = snapPageEditorSelection(frame, rawRect, state.pageEditor.scope);
+    state.pageEditor.rawRect = snapped.rawRect;
+    state.pageEditor.rect = snapped.rect;
+    state.pageEditor.anchor = snapped.anchor;
+    selectionBox.classList.add("active");
+    selectionBox.style.cssText = selectionRectStyle(state.pageEditor.rect);
+  };
+  const finishTouchSelectionFromEvent = (event) => {
+    if (!isBindingActive()) {
+      cancelTouchSelection();
+      return;
+    }
+
+    if (!state.pageEditor.selectionOrigin) {
+      cancelTouchSelection();
+      return;
+    }
+
+    const touch = getTouchByIdentifier(event.changedTouches, activePointerId) || event.changedTouches?.[0] || pendingTouch;
+    if (!touch) {
+      cancelTouchSelection();
+      return;
+    }
+
+    if (event.cancelable) {
+      event.preventDefault();
+    }
+
+    finishTouchSelection(touch);
+  };
+
+  const handleTouchStart = (event) => {
+    if (!isBindingActive() || state.pageEditor.scope === "next-page-link" || event.touches.length !== 1) {
+      cancelTouchSelection();
+      return;
+    }
+
+    if (state.pageEditor.selectionOrigin) {
+      return;
+    }
+
+    const touch = cloneTouchSnapshot(event.touches[0]);
+    if (!isTouchInsideFrame(touch)) {
+      clearPendingTouch();
+      return;
+    }
+
+    pendingTouch = touch;
+    setShellSelectionLock(true);
+    attachPendingTouchObservers();
+    clearLongPressTimer();
+    longPressTimer = window.setTimeout(() => {
+      longPressTimer = null;
+      activateTouchSelection();
+    }, TOUCH_SELECTION_LONG_PRESS_MS);
+  };
+
+  shell.addEventListener("touchstart", handleTouchStart, { passive: true });
 }
 
 function bindErrorReviewActions() {
   $all("[data-review-select-page]").forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      button.blur?.();
       const page = Number(button.dataset.reviewSelectPage);
       if (!Number.isInteger(page) || page < 1) {
         return;
       }
 
-      setReviewSelectedPage(page);
+      const isAlreadySelected = getReviewSelectedPage() === page;
+      setReviewSelectedPage(isAlreadySelected ? null : page);
       setReviewRevealedItemIds([]);
       resetReviewSwipeState();
       renderErrorReview(state.payload);
+      resetHorizontalViewportOffset();
       bindErrorReviewActions();
     });
   });
 
   $all("[data-review-return-queue]").forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      button.blur?.();
       setReviewSelectedPage(null);
       setReviewRevealedItemIds([]);
       resetReviewSwipeState();
       renderErrorReview(state.payload);
+      resetHorizontalViewportOffset();
       bindErrorReviewActions();
     });
   });
@@ -5588,9 +8024,15 @@ function bindErrorReviewActions() {
 
   $all("[data-review-answer]").forEach((button) => {
     button.addEventListener("click", async () => {
+      if (button.disabled) {
+        return;
+      }
+
+      button.disabled = true;
       try {
         const result = String(button.dataset.reviewAnswer || "");
         const id = String(button.dataset.reviewId || "");
+        const currentPage = Number(button.dataset.reviewPage || 0);
         if (!id) {
           return;
         }
@@ -5600,14 +8042,11 @@ function bindErrorReviewActions() {
           ? state.payload.errorReview.dueItems.map((item) => normalizeErrorReviewItem(item)).filter(Boolean)
           : [];
         const beforeGroups = buildReviewPageGroups(beforeDueItems);
-        const beforeGroup = beforeGroups[0] || null;
-        const beforePage = Number(beforeGroup?.page || 0);
+        const beforeGroup = beforeGroups.find((group) => group.page === currentPage) || beforeGroups[0] || null;
+        const beforePage = Number(beforeGroup?.page || currentPage || 0);
         const answeredItem = beforeGroup?.items.find((item) => item.id === id) || beforeDueItems.find((item) => item.id === id) || null;
         setReviewRevealedItemIds(getReviewRevealedItemIds().filter((itemId) => itemId !== id));
-        state.payload = await api("/api/error-review/answer", {
-          method: "POST",
-          body: JSON.stringify({ id, result }),
-        });
+        state.payload = await dataClient.answerErrorReview(id, result);
         const afterDueItems = Array.isArray(state.payload?.errorReview?.dueItems)
           ? state.payload.errorReview.dueItems.map((item) => normalizeErrorReviewItem(item)).filter(Boolean)
           : [];
@@ -5620,7 +8059,12 @@ function bindErrorReviewActions() {
           setReviewCompletedItemsForPage(beforePage, []);
         }
 
-        render();
+        refreshErrorExperience(state.payload, {
+          refreshSummary: false,
+          refreshTracking: false,
+          refreshReview: true,
+          refreshEditor: false,
+        });
         if (wasSuccess) {
           launchButtonPulse(origin, "success");
           if (beforePage && !samePageStillDue) {
@@ -5633,9 +8077,13 @@ function bindErrorReviewActions() {
         }
       } catch (error) {
         showToast(error.message, true);
+      } finally {
+        button.disabled = false;
       }
     });
   });
+
+  const allowReviewSwipeGesture = !(isNativeAppRuntime() || isCoarsePointerDevice());
 
   $all("[data-review-card]").forEach((card) => {
     let activePointerId = null;
@@ -5651,6 +8099,11 @@ function bindErrorReviewActions() {
         activePointerId = null;
       }
     };
+
+    if (!allowReviewSwipeGesture) {
+      resetCard();
+      return;
+    }
 
     card.addEventListener("pointerdown", (event) => {
       const reviewCardId = String(card.dataset.reviewCard || "").trim();
@@ -5718,13 +8171,28 @@ function bindErrorReviewActions() {
 
     card.addEventListener("pointerup", finish);
     card.addEventListener("pointercancel", finish);
-    card.addEventListener("pointerleave", resetCard);
-    card.addEventListener("pointerenter", () => {
-      if (activePointerId === null) {
+    card.addEventListener("pointerleave", () => {
+      if (activePointerId !== null) {
         resetCard();
       }
     });
   });
+}
+
+function refreshTodayExperience(payload = state.payload, options = {}) {
+  const { rebind = false } = options;
+  document.body.classList.toggle("day-complete", Boolean(payload?.plan?.dayClosed));
+  renderHero(payload);
+  renderSummary(payload);
+  renderTodayFocus(payload);
+  renderTodayPhaseSwitcher(payload);
+  renderDayStatus(payload);
+  renderSettingsPreview(payload);
+  renderCards(payload);
+  renderRouteProgress(payload?.plan);
+  if (rebind) {
+    bindDynamicActions();
+  }
 }
 
 function bindDynamicActions() {
@@ -5733,13 +8201,18 @@ function bindDynamicActions() {
       try {
         const origin = button.getBoundingClientRect();
         const blockKey = button.dataset.focusToggleBlock;
+        const previousScrollY = window.scrollY;
         const wasDone = Boolean(state.payload?.plan?.blocks?.[blockKey]?.done);
         const wasComplete = Boolean(state.payload?.plan?.canAdvanceDay);
-        state.payload = await api("/api/toggle-block", {
-          method: "POST",
-          body: JSON.stringify({ blockKey }),
+        state.payload = await dataClient.toggleBlock(blockKey);
+        refreshTodayExperience(state.payload, { rebind: true });
+        window.requestAnimationFrame(() => {
+          window.scrollTo({
+            top: previousScrollY,
+            left: 0,
+            behavior: "auto",
+          });
         });
-        render();
         const isDone = Boolean(state.payload?.plan?.blocks?.[blockKey]?.done);
         const isComplete = Boolean(state.payload?.plan?.canAdvanceDay);
         if (!wasDone && isDone) {
@@ -5758,13 +8231,15 @@ function bindDynamicActions() {
     button.addEventListener("click", () => {
       const blockKey = button.dataset.scrollToCard;
       state.expandedCards[blockKey] = true;
-      render();
+      refreshTodayExperience(state.payload, { rebind: true });
       const target = document.querySelector(`[data-block-card="${blockKey}"]`);
       if (!target) {
         return;
       }
 
-      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const behavior = isNativeAppRuntime() || isCoarsePointerDevice() || prefersReducedMotion ? "auto" : "smooth";
+      target.scrollIntoView({ behavior, block: "start" });
     });
   });
 
@@ -5773,7 +8248,7 @@ function bindDynamicActions() {
       const blockKey = button.dataset.cardExpand;
       const current = isCardExpanded(blockKey, state.payload?.plan?.blocks?.[blockKey]);
       state.expandedCards[blockKey] = !current;
-      render();
+      refreshTodayExperience(state.payload, { rebind: true });
     });
   });
 
@@ -5784,11 +8259,9 @@ function bindDynamicActions() {
         const blockKey = button.dataset.blockKey;
         const wasDone = Boolean(state.payload?.plan?.blocks?.[blockKey]?.done);
         const wasComplete = Boolean(state.payload?.plan?.canAdvanceDay);
-        state.payload = await api("/api/toggle-block", {
-          method: "POST",
-          body: JSON.stringify({ blockKey }),
-        });
-        render();
+        state.payload = await dataClient.toggleBlock(blockKey);
+        refreshTodayExperience(state.payload, { rebind: true });
+        scrollTodayFocusIntoView();
         const isDone = Boolean(state.payload?.plan?.blocks?.[blockKey]?.done);
         const isComplete = Boolean(state.payload?.plan?.canAdvanceDay);
         if (!wasDone && isDone) {
@@ -5803,6 +8276,35 @@ function bindDynamicActions() {
     });
   });
 
+  $all("[data-today-phase-display]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        const phaseIndex = Number(button.dataset.todayPhaseDisplay);
+        const mode = state.payload?.settings?.programMode || "forward";
+        const phases = getProgramPhasesForMode(mode);
+        if (!Number.isInteger(phaseIndex) || phaseIndex < 1 || phaseIndex > phases.length) {
+          return;
+        }
+
+        state.payload = await dataClient.saveConfig({
+          settings: {
+            ...state.payload.settings,
+            totalHalfPages: MUSHAF_TOTAL_HALF_PAGES,
+          },
+          progress: {
+            programDayIndex: Number(state.payload?.progress?.programDayIndex || 1),
+            phaseIndex,
+            phaseProgressHalfPages: getPhaseProgressHalfPagesFromPayload(state.payload, mode),
+          },
+        });
+        refreshTodayExperience(state.payload, { rebind: true });
+        scrollTodayFocusIntoView();
+      } catch (error) {
+        showToast(error.message, true);
+      }
+    });
+  });
+
   $all("[data-wave-index]").forEach((button) => {
     button.addEventListener("click", async () => {
       try {
@@ -5811,14 +8313,8 @@ function bindDynamicActions() {
         const slotIndex = Number(button.dataset.slotIndex);
         const wasChecked = Boolean(state.payload?.plan?.blocks?.new?.waves?.[waveIndex]?.slots?.[slotIndex]?.checked);
         const wasComplete = Boolean(state.payload?.plan?.canAdvanceDay);
-        state.payload = await api("/api/toggle-wave-slot", {
-          method: "POST",
-          body: JSON.stringify({
-            waveIndex,
-            slotIndex,
-          }),
-        });
-        render();
+        state.payload = await dataClient.toggleWaveSlot(waveIndex, slotIndex);
+        refreshTodayExperience(state.payload, { rebind: true });
         const isChecked = Boolean(state.payload?.plan?.blocks?.new?.waves?.[waveIndex]?.slots?.[slotIndex]?.checked);
         const isComplete = Boolean(state.payload?.plan?.canAdvanceDay);
         if (!wasChecked && isChecked) {
@@ -5834,62 +8330,125 @@ function bindDynamicActions() {
   });
 
   bindJuzGroupToggles();
-  bindPageQuickActions();
-  bindPageCellSelection();
-  bindPageEditorActions();
-  bindErrorReviewActions();
+  if (state.activeView === "pages" || state.pageEditor.open) {
+    bindPageQuickActions();
+    bindPageCellSelection();
+    bindPageEditorActions();
+  }
+  if (state.activeView === "review") {
+    bindErrorReviewActions();
+  }
 }
 
 function render() {
   document.body.classList.toggle("day-complete", Boolean(state.payload?.plan?.dayClosed));
+  document.body.classList.toggle("native-runtime", isNativeAppRuntime());
   localizeStaticUi(state.payload);
+  updateInstallButton();
   renderHero(state.payload);
   renderSummary(state.payload);
-  renderTodayFocus(state.payload);
-  renderDayStatus(state.payload);
-  renderErrorTracking(state.payload);
-  renderErrorReview(state.payload);
-  renderSurahGame(state.payload);
+  if (state.activeView === "today") {
+    renderTodayFocus(state.payload);
+    renderTodayPhaseSwitcher(state.payload);
+    renderDayStatus(state.payload);
+    renderCards(state.payload);
+    renderRouteProgress(state.payload.plan);
+  }
+  if (state.activeView === "pages" || state.pageEditor.open) {
+    renderErrorTracking(state.payload);
+  }
+  if (state.activeView === "review") {
+    renderErrorReview(state.payload);
+  }
+  if (state.activeView === "statistics") {
+    renderStatistics(state.payload);
+  }
+  if (state.activeView === "surahs") {
+    renderSurahGame(state.payload);
+  }
   renderPageEditorModal(state.payload);
+  renderOnboarding(state.payload);
   renderSettingsPreview(state.payload);
-  renderCards(state.payload);
   fillForm(state.payload);
-  setActiveView(state.activeView);
-  renderRouteProgress(state.payload.plan);
+  renderNotificationRuntimeStatus(state.payload);
+  setActiveView(state.activeView, { scrollOnMobile: false, skipDeferredRender: true });
   bindDynamicActions();
 }
 
 function bindStaticActions() {
   $("#config-form").addEventListener("submit", async (event) => {
     event.preventDefault();
+    const submitButton = $("#config-form [data-settings-submit='true']");
+    if (submitButton?.disabled) {
+      return;
+    }
+
+    if (submitButton) {
+      submitButton.disabled = true;
+    }
     try {
-      state.payload = await api("/api/config", {
-        method: "POST",
-        body: JSON.stringify({
-          settings: {
-            firstName: $("#first-name").value,
-            language: $("#language").value,
-            programMode: $("#program-mode").value,
-            dailyNewHalfPages: Number($("#daily-new-half-pages").value),
-            totalHalfPages: Number($("#total-half-pages").value),
+      const notificationsEnabledBefore = Boolean(getNotificationPreferences(state.payload).enabled);
+      state.payload = await dataClient.saveConfig({
+        settings: {
+          firstName: $("#first-name").value,
+          language: $("#language").value,
+          programMode: $("#program-mode").value,
+          dailyNewHalfPages: parseDailyNewPagesToHalfPages($("#daily-new-half-pages").value),
+          totalHalfPages: MUSHAF_TOTAL_HALF_PAGES,
+        },
+        progress: {
+          programDayIndex: Number($("#program-day-index").value),
+          phaseIndex: getSelectedPhaseIndex(state.payload),
+          phaseProgressHalfPages: getPhaseProgressHalfPagesFromForm(),
+        },
+        preferences: {
+          notifications: {
+            enabled: Boolean($("#notifications-enabled").checked),
+            reminders: {
+              review: {
+                enabled: Boolean($("#notification-review-enabled").checked),
+                time: normalizeNotificationTime($("#notification-review-time").value, "07:30"),
+              },
+              newMorning: {
+                enabled: Boolean($("#notification-morning-enabled").checked),
+                time: normalizeNotificationTime($("#notification-morning-time").value, "09:00"),
+              },
+              newNoon: {
+                enabled: Boolean($("#notification-noon-enabled").checked),
+                time: normalizeNotificationTime($("#notification-noon-time").value, "13:00"),
+              },
+              newEvening: {
+                enabled: Boolean($("#notification-evening-enabled").checked),
+                time: normalizeNotificationTime($("#notification-evening-time").value, "20:00"),
+              },
+            },
           },
-          progress: {
-            programDayIndex: Number($("#program-day-index").value),
-            phaseIndex: getSelectedPhaseIndex(state.payload),
-            phaseProgressHalfPages: getPhaseProgressHalfPagesFromForm(),
-          },
-        }),
+        },
       });
+      const notificationsEnabledAfter = Boolean(getNotificationPreferences(state.payload).enabled);
       render();
+      const notificationResult = await refreshNotificationStatus(state.payload, {
+        sync: true,
+        requestPermission: notificationsEnabledAfter && !notificationsEnabledBefore,
+        silent: false,
+      });
+      setActiveView("today", { scrollOnMobile: true });
       showToast(t("toast.dayRecalculated"));
+      if (notificationResult?.native && notificationsEnabledAfter && notificationResult?.display !== "granted") {
+        showToast(t("toast.notificationsPermissionDenied", {}, state.payload), true);
+      }
     } catch (error) {
       showToast(error.message, true);
+    } finally {
+      if (submitButton) {
+        submitButton.disabled = false;
+      }
     }
   });
 
   $("#reset-button").addEventListener("click", async () => {
     try {
-      state.payload = await api("/api/reset-today", { method: "POST" });
+      state.payload = await dataClient.resetToday();
       render();
       showToast(t("toast.dayReset"));
     } catch (error) {
@@ -5899,8 +8458,11 @@ function bindStaticActions() {
 
   $("#advance-button").addEventListener("click", async () => {
     try {
-      state.payload = await api("/api/advance-day", { method: "POST" });
+      const origin = $("#advance-button")?.getBoundingClientRect?.() || null;
+      state.payload = await dataClient.advanceDay();
       render();
+      await refreshNotificationStatus(state.payload, { sync: true, silent: true });
+      launchDayCompletionCelebration(origin);
       showToast(t("toast.nextDay"));
     } catch (error) {
       showToast(error.message, true);
@@ -5909,7 +8471,7 @@ function bindStaticActions() {
 
   $("#skip-memorization-button").addEventListener("click", async () => {
     try {
-      state.payload = await api("/api/skip-memorization-day", { method: "POST" });
+      state.payload = await dataClient.skipMemorizationDay();
       render();
       launchGrandCelebration();
       showToast(t("toast.skipMemorizationDay"));
@@ -5918,24 +8480,160 @@ function bindStaticActions() {
     }
   });
 
+  $("#install-app-button")?.addEventListener("click", async () => {
+    try {
+      if (!state.pwa.installPrompt) {
+        return;
+      }
+
+      const promptEvent = state.pwa.installPrompt;
+      state.pwa.installPrompt = null;
+      state.pwa.canInstall = false;
+      updateInstallButton();
+      await promptEvent.prompt();
+      await promptEvent.userChoice.catch(() => null);
+    } catch (_error) {
+      state.pwa.canInstall = Boolean(state.pwa.installPrompt);
+      updateInstallButton();
+    }
+  });
+
+  $("#mobile-onboarding-root")?.addEventListener("click", async (event) => {
+    const stepButton = event.target.closest("[data-onboarding-step]");
+    if (stepButton) {
+      state.onboarding.stepIndex = Number(stepButton.dataset.onboardingStep) || 0;
+      renderOnboarding(state.payload);
+      return;
+    }
+
+    const languageButton = event.target.closest("[data-onboarding-language]");
+    if (languageButton) {
+      const previousPayload = state.payload;
+      const previousStepIndex = Number(state.onboarding.stepIndex || 0);
+      try {
+        const language = String(languageButton.dataset.onboardingLanguage || "fr");
+        const optimisticPayload = {
+          ...previousPayload,
+          settings: {
+            ...previousPayload.settings,
+            language,
+            totalHalfPages: MUSHAF_TOTAL_HALF_PAGES,
+          },
+        };
+
+        state.payload = optimisticPayload;
+        state.onboarding.stepIndex = Math.min(previousStepIndex + 1, getOnboardingSteps(optimisticPayload).length - 1);
+        render();
+
+        state.payload = await dataClient.saveConfig({
+          settings: {
+            ...previousPayload.settings,
+            language,
+            totalHalfPages: MUSHAF_TOTAL_HALF_PAGES,
+          },
+          progress: {
+            programDayIndex: Number(previousPayload?.progress?.programDayIndex || 1),
+            phaseIndex: Number(previousPayload?.progress?.phaseIndex || 1),
+            phaseProgressHalfPages: getPhaseProgressHalfPagesFromPayload(
+              previousPayload,
+              previousPayload?.settings?.programMode || "forward",
+            ),
+          },
+        });
+        render();
+      } catch (error) {
+        state.payload = previousPayload;
+        state.onboarding.stepIndex = previousStepIndex;
+        render();
+        showToast(error.message, true);
+      }
+      return;
+    }
+
+    const actionButton = event.target.closest("[data-onboarding-action]");
+    if (!actionButton) {
+      return;
+    }
+
+    const action = actionButton.dataset.onboardingAction;
+    if (action === "next") {
+      state.onboarding.stepIndex = Math.min(state.onboarding.stepIndex + 1, getOnboardingSteps(state.payload).length - 1);
+      renderOnboarding(state.payload);
+      return;
+    }
+
+    if (action === "skip" || action === "finish") {
+      const shouldOpenSettings = !state.onboarding.hasSeen;
+      markOnboardingSeen();
+      state.onboarding.open = false;
+      state.onboarding.stepIndex = 0;
+      if (shouldOpenSettings) {
+        setActiveView("settings", { scrollOnMobile: true });
+      }
+      renderOnboarding(state.payload);
+    }
+  });
+
   $all("[data-view-target]").forEach((button) => {
     button.addEventListener("click", () => {
-      setActiveView(button.dataset.viewTarget);
+      setActiveView(button.dataset.viewTarget, { scrollOnMobile: true });
     });
+  });
+
+  window.addEventListener("resize", () => {
+    const wasOpen = state.onboarding.open;
+    updateOnboardingVisibility(true);
+    if (state.onboarding.open !== wasOpen) {
+      renderOnboarding(state.payload);
+    }
+  });
+
+  $("#error-grid")?.addEventListener("click", (event) => {
+    const toggleButton = event.target.closest("[data-toggle-juz]");
+    if (toggleButton) {
+      const juz = Number(toggleButton.dataset.toggleJuz);
+      if (!Number.isInteger(juz) || juz < 1) {
+        return;
+      }
+
+      state.collapsedJuzs[juz] = !state.collapsedJuzs[juz];
+      renderErrorTracking(state.payload, { forceFull: true });
+      bindPageQuickActions();
+      return;
+    }
+
+    const pageCell = event.target.closest("[data-page-cell]");
+    if (!pageCell) {
+      return;
+    }
+
+    const page = Number(pageCell.dataset.pageCell);
+    if (!Number.isInteger(page) || page < 1) {
+      return;
+    }
+
+    state.activePage = page;
+    openPageEditor(page);
+    ensureMushafPageData(page);
+    refreshPagesQuickUi(state.payload);
+    renderPageEditorModal(state.payload);
+    bindPageEditorActions();
+    showToast(t("toast.pageSelected", { page }));
   });
 
   $all("[data-daily-new-preset]").forEach((button) => {
     button.addEventListener("click", () => {
       const value = Number(button.dataset.dailyNewPreset);
-      if (!Number.isInteger(value) || value < 1) {
+      if (!Number.isFinite(value) || value < 0) {
         return;
       }
 
       $("#daily-new-half-pages").value = String(value);
+      syncDailyNewPresets();
     });
   });
 
-  $("#total-half-pages").addEventListener("input", () => {
+  $("#total-half-pages")?.addEventListener("input", () => {
     syncCurrentPageMax();
     renderPhaseProgressEditor(state.payload, { preserveDraft: true });
   });
@@ -5946,6 +8644,18 @@ function bindStaticActions() {
 
   $("#program-mode").addEventListener("change", () => {
     renderPhaseProgressEditor(state.payload, { preserveDraft: true });
+  });
+
+  [
+    "#notifications-enabled",
+    "#notification-review-enabled",
+    "#notification-morning-enabled",
+    "#notification-noon-enabled",
+    "#notification-evening-enabled",
+  ].forEach((selector) => {
+    $(selector)?.addEventListener("change", () => {
+      syncNotificationFormState();
+    });
   });
 
   $("#surah-game").addEventListener("click", (event) => {
@@ -6103,8 +8813,18 @@ function bindStaticActions() {
 
 async function init() {
   bindStaticActions();
-  state.payload = await api("/api/state");
+  if (!dataClient?.getState) {
+    throw new Error("Dabt data client is unavailable.");
+  }
+  state.onboarding.hasSeen = readOnboardingSeen();
+  state.payload = await dataClient.getState({ allowSnapshotFallback: true });
+  if (dataClient.isSnapshotPayload?.(state.payload)) {
+    showToast(t("toast.snapshotMode", {}, state.payload), true);
+  }
+  updateOnboardingVisibility(true);
   render();
+  await refreshNotificationStatus(state.payload, { sync: true, silent: true });
+  registerPwaFeatures();
 }
 
 window.addEventListener("DOMContentLoaded", () => {

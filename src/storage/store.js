@@ -1,20 +1,25 @@
-const fs = require("node:fs");
-const crypto = require("node:crypto");
-const path = require("node:path");
 const { createEmptyCard, fsrs, Rating, State } = require("ts-fsrs");
+const { createMemoryStateRepository, resolveDefaultStateRepository } = require("./state-repository");
+const {
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  buildStatistics,
+  mergeNotificationPreferences,
+  normalizeActivityHistory,
+  normalizeNotificationPreferences,
+  recordDayCompletion,
+} = require("../lib/activity");
 const {
   DEFAULT_PROGRESS,
   DEFAULT_SETTINGS,
   buildTodayPlan,
   createEmptyDailyStatus,
   getDaySignature,
+  isLegacyProgressScale,
   normalizeDailyStatus,
   normalizeProgress,
   normalizeSettings,
 } = require("../lib/plan");
 
-const DATA_DIR = path.join(__dirname, "..", "..", "data");
-const STATE_FILE = path.join(DATA_DIR, "state.json");
 const PAGE_ERROR_LEVELS = new Set(["minor", "medium", "grave"]);
 const ERROR_LEVEL_KEYS = ["minor", "medium", "grave"];
 const ERROR_SCOPE_KEYS = ["harakah", "word", "line", "next-page-link"];
@@ -67,14 +72,43 @@ const STORE_TEXT = {
     invalidReviewItem: "Error card not found.",
     invalidReviewResult: "Invalid review result.",
   },
+  ar: {
+    noValidPages: "لم يتم تقديم صفحة صالحة.",
+    invalidPageNumber: "رقم الصفحة غير صالح.",
+    invalidBlock: "الكتلة غير صالحة.",
+    blockUnavailable: "هذه الكتلة غير متاحة اليوم.",
+    validateFirst: "تحقق أولا من: {{items}}.",
+    invalidWave: "تحقق الموجة غير صالح.",
+    newUnavailable: "الجديد غير متاح اليوم.",
+    dayNotComplete: "اليوم لم يكتمل التحقق منه بعد.",
+    skipMemorizationUnavailable: "هذا الزر متاح فقط عندما يكون كل شيء متحققا ما عدا الجديد.",
+    invalidErrorType: "نوع الخطأ غير صالح.",
+    invalidErrorScope: "نوع المنطقة غير صالح.",
+    invalidSelectionRect: "المنطقة المحددة غير صالحة.",
+    invalidErrorItem: "الخطأ غير موجود.",
+    nextPageLinkAlreadyExists: "هذه الصفحة فيها بالفعل خطأ ربط مع الصفحة التالية.",
+    invalidReviewItem: "بطاقة الخطأ غير موجودة.",
+    invalidReviewResult: "نتيجة المراجعة غير صالحة.",
+  },
 };
+let stateRepository = resolveDefaultStateRepository();
 
-function ensureDataDir() {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+function generateRandomId() {
+  if (typeof globalThis !== "undefined" && globalThis.crypto && typeof globalThis.crypto.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `dabt-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function getLanguage(settings = DEFAULT_SETTINGS) {
-  return settings?.language === "en" ? "en" : "fr";
+  if (settings?.language === "en") {
+    return "en";
+  }
+  if (settings?.language === "ar") {
+    return "ar";
+  }
+  return "fr";
 }
 
 function translate(settings, key, variables = {}) {
@@ -91,37 +125,53 @@ function createDefaultState() {
     settings,
     progress,
     dailyStatus: createEmptyDailyStatus(signature),
+    notificationPreferences: normalizeNotificationPreferences(DEFAULT_NOTIFICATION_PREFERENCES),
+    activityHistory: normalizeActivityHistory([]),
     pageErrors: {},
   };
 }
 
+function getStateRepository() {
+  return stateRepository;
+}
+
+function setStateRepository(repository) {
+  if (!repository || typeof repository.read !== "function" || typeof repository.write !== "function") {
+    throw new Error("State repository invalide.");
+  }
+
+  stateRepository = repository;
+}
+
+function resetStateRepository() {
+  stateRepository = resolveDefaultStateRepository();
+}
+
 function writeRawState(state) {
-  ensureDataDir();
-  fs.writeFileSync(STATE_FILE, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  getStateRepository().write(state);
 }
 
 function readRawState() {
-  ensureDataDir();
-  if (!fs.existsSync(STATE_FILE)) {
+  const rawState = getStateRepository().read();
+  if (!rawState || typeof rawState !== "object") {
     const initial = createDefaultState();
     writeRawState(initial);
     return initial;
   }
 
-  try {
-    return JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
-  } catch (_error) {
-    const fallback = createDefaultState();
-    writeRawState(fallback);
-    return fallback;
-  }
+  return rawState;
 }
 
 function normalizeState(rawState = {}) {
-  const settings = normalizeSettings(rawState.settings || DEFAULT_SETTINGS);
-  const progress = normalizeProgress(rawState.progress || DEFAULT_PROGRESS, settings);
+  const rawSettings = rawState.settings || DEFAULT_SETTINGS;
+  const settings = normalizeSettings(rawSettings);
+  const progress = normalizeProgress(rawState.progress || DEFAULT_PROGRESS, settings, {
+    legacyScale: isLegacyProgressScale(rawSettings),
+  });
   const signature = getDaySignature(settings, progress);
   const dailyStatus = normalizeDailyStatus(rawState.dailyStatus || {}, signature);
+  const notificationPreferences = normalizeNotificationPreferences(rawState.notificationPreferences || DEFAULT_NOTIFICATION_PREFERENCES);
+  const activityHistory = normalizeActivityHistory(rawState.activityHistory || []);
   const pageErrors = normalizePageErrors(rawState.pageErrors || {}, settings);
 
   if (dailyStatus.signature !== signature) {
@@ -129,6 +179,8 @@ function normalizeState(rawState = {}) {
       settings,
       progress,
       dailyStatus: createEmptyDailyStatus(signature),
+      notificationPreferences,
+      activityHistory,
       pageErrors,
     };
   }
@@ -137,6 +189,8 @@ function normalizeState(rawState = {}) {
     settings,
     progress,
     dailyStatus,
+    notificationPreferences,
+    activityHistory,
     pageErrors,
   };
 }
@@ -154,6 +208,10 @@ function buildResponse(state) {
     settings: state.settings,
     progress: state.progress,
     dailyStatus: state.dailyStatus,
+    preferences: {
+      notifications: state.notificationPreferences,
+    },
+    statistics: buildStatistics(state.activityHistory),
     pageErrors: state.pageErrors,
     errorTracking,
     errorReview,
@@ -178,6 +236,10 @@ function saveConfig(input = {}) {
     },
     settings,
   );
+  const notificationPreferences = mergeNotificationPreferences(
+    current.notificationPreferences,
+    input.preferences?.notifications || {},
+  );
   const signature = getDaySignature(settings, progress);
   const state = {
     settings,
@@ -186,6 +248,8 @@ function saveConfig(input = {}) {
       signature === current.dailyStatus.signature
         ? normalizeDailyStatus(current.dailyStatus || {}, signature)
         : createEmptyDailyStatus(signature),
+    notificationPreferences,
+    activityHistory: normalizeActivityHistory(current.activityHistory),
     pageErrors: normalizePageErrors(current.pageErrors, settings),
   };
   writeRawState(state);
@@ -208,6 +272,8 @@ function updateState(mutator) {
       skipNew: Boolean(current.dailyStatus.skipNew),
       waves: current.dailyStatus.waves.map((wave) => [...wave]),
     },
+    notificationPreferences: normalizeNotificationPreferences(current.notificationPreferences),
+    activityHistory: normalizeActivityHistory(current.activityHistory),
     pageErrors: JSON.parse(JSON.stringify(current.pageErrors)),
   });
   const normalized = normalizeState(next);
@@ -820,6 +886,19 @@ function normalizePageList(rawPages, settings = DEFAULT_SETTINGS) {
   return uniquePages;
 }
 
+function markDayCompletion(state, plan = buildTodayPlan(state)) {
+  if (!plan?.dayClosed) {
+    return;
+  }
+
+  state.activityHistory = recordDayCompletion(state.activityHistory, {
+    completedAt: new Date().toISOString(),
+    skippedNew: Boolean(plan.skippedMemorizationDay),
+    programDayIndex: state.progress.programDayIndex,
+    phaseIndex: state.progress.phaseIndex,
+  });
+}
+
 function toggleBlock(blockKey) {
   return updateState((state) => {
     if (!Object.prototype.hasOwnProperty.call(state.dailyStatus.blocks, blockKey)) {
@@ -840,6 +919,7 @@ function toggleBlock(blockKey) {
         throw new Error(translate(state.settings, "validateFirst", { items: block.blockedByLabels.join(", ") }));
       }
       state.dailyStatus.blocks[blockKey] = true;
+      markDayCompletion(state);
       return state;
     }
 
@@ -877,6 +957,7 @@ function toggleWaveSlot(waveIndex, slotIndex) {
 
     state.dailyStatus.skipNew = false;
     state.dailyStatus.waves[waveIndex][slotIndex] = !state.dailyStatus.waves[waveIndex][slotIndex];
+    markDayCompletion(state);
     return state;
   });
 }
@@ -895,6 +976,7 @@ function advanceDay() {
       throw new Error(translate(state.settings, "dayNotComplete"));
     }
 
+    markDayCompletion(state, plan);
     state.progress.currentHalfPage = plan.nextProgress.currentHalfPage;
     state.progress.programDayIndex = plan.nextProgress.programDayIndex;
     state.progress.phaseIndex = plan.nextProgress.phaseIndex;
@@ -914,6 +996,7 @@ function skipMemorizationDay() {
     }
 
     state.dailyStatus.skipNew = true;
+    markDayCompletion(state);
     return state;
   });
 }
@@ -971,7 +1054,7 @@ function setPageError(pages, severityOrOptions, note = "") {
       entry.errors[severity] += 1;
       entry.events = [
         {
-          id: crypto.randomUUID(),
+          id: generateRandomId(),
           severity,
           scope: scope || severityToScope(severity),
           rect,
@@ -1102,12 +1185,16 @@ module.exports = {
   answerErrorReview,
   advanceDay,
   clearPageError,
+  createMemoryStateRepository,
   getState,
+  getStateRepository,
   removePageErrorItem,
+  resetStateRepository,
   resetToday,
   saveConfig,
   setPageError,
   setPageLearned,
+  setStateRepository,
   skipMemorizationDay,
   toggleBlock,
   toggleWaveSlot,

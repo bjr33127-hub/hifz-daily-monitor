@@ -1,6 +1,14 @@
+const MUSHAF_TOTAL_PAGES = 604;
+const LEGACY_UNITS_PER_PAGE = 2;
+const PROGRESS_UNITS_PER_PAGE = 30;
+const LINES_PER_PAGE = 15;
+const PROGRESS_UNITS_PER_LINE = PROGRESS_UNITS_PER_PAGE / LINES_PER_PAGE;
+const MAX_DAILY_NEW_PAGES = 10;
+const MUSHAF_TOTAL_PROGRESS_UNITS = MUSHAF_TOTAL_PAGES * PROGRESS_UNITS_PER_PAGE;
+
 const DEFAULT_SETTINGS = {
-  dailyNewHalfPages: 1,
-  totalHalfPages: 1200,
+  dailyNewHalfPages: PROGRESS_UNITS_PER_PAGE / 2,
+  totalHalfPages: MUSHAF_TOTAL_PROGRESS_UNITS,
   firstName: "",
   language: "fr",
   programMode: "forward",
@@ -24,12 +32,15 @@ const PLAN_TEXT = {
   fr: {
     halfPageSingular: "demi-page",
     halfPagePlural: "demi-pages",
+    lineSingular: "ligne",
+    linePlural: "lignes",
     pageSingular: "page",
     pagePlural: "pages",
     upperHalf: "haute",
     lowerHalf: "basse",
     pageLabel: "Page {{page}}",
-    halfPageLabel: "Page {{page}} moitie {{half}}",
+    halfPageLabel: "Page {{page}} moitié {{half}}",
+    lineLabel: "Page {{page}} ligne {{line}}",
     pageRangeLabel: "Page {{start}} -> Page {{end}}",
     partLabel: "Partie {{number}}",
     waveLabel: "Vague {{number}}",
@@ -37,36 +48,39 @@ const PLAN_TEXT = {
     phaseLabel: "Phase {{current}} / {{total}}",
     titleOld: "Ancien",
     titleConsolidation: "Consolidation",
-    titleRecent: "Recent",
+    titleRecent: "Récent",
     titleYesterday: "Veille",
     titleNew: "Nouveau",
-    directionForward: "debut -> fin",
-    directionReverse: "fin -> debut",
-    oldHelper: "Rotation automatique en 7 parties equilibrees sur tout l'ancien situe avant J-30.",
+    directionForward: "début -> fin",
+    directionReverse: "fin -> début",
+    oldHelper: "Rotation automatique en 7 parties [[équilibrées]] sur tout l'ancien situé avant [[J-30]].",
     oldEmpty: "Pas encore d'ancien disponible.",
     consolidationHelper:
-      "Revision de la partie des 30 derniers jours : la consolidation couvre J-8 a J-30, avec une seule partie active a valider aujourd'hui.",
-    consolidationEmpty: "Pas encore de partie de revision sur les 30 derniers jours (J-8 a J-30).",
-    recentHelper: "Bloc continu J-1 a J-7.",
-    recentEmpty: "Pas encore de recent disponible.",
-    yesterdayHelper: "Bloc de nouveau d'hier uniquement.",
+      "Révision de la partie des 30 derniers jours : la consolidation couvre [[J-8 à J-30]], avec une seule partie active à valider aujourd'hui.",
+    consolidationEmpty: "Pas encore de partie de révision sur les 30 derniers jours (J-8 à J-30).",
+    recentHelper: "Bloc continu [[J-1 à J-7]].",
+    recentEmpty: "Pas encore de récent disponible.",
+    yesterdayHelper: "Bloc de [[nouveau d'hier]] uniquement.",
     yesterdayEmpty: "Pas encore de veille disponible.",
-    newHelper: "3 vagues, 3 validations par vague.",
+    newHelper: "[[3 vagues]], [[3 validations]] par vague.",
     newEmpty: "Plus de nouveau a attribuer.",
-    newFinished: "Nouveau termine",
-    programFinished: "Parcours termine",
+    newFinished: "Nouveau terminé",
+    programFinished: "Parcours terminé",
     activePartLabel: "1 partie active",
-    balancedPartsLabel: "Parties equilibrees",
+    balancedPartsLabel: "Parties équilibrées",
   },
   en: {
     halfPageSingular: "half-page",
     halfPagePlural: "half-pages",
+    lineSingular: "line",
+    linePlural: "lines",
     pageSingular: "page",
     pagePlural: "pages",
     upperHalf: "upper",
     lowerHalf: "lower",
     pageLabel: "Page {{page}}",
     halfPageLabel: "Page {{page}} {{half}} half",
+    lineLabel: "Page {{page}} line {{line}}",
     pageRangeLabel: "Page {{start}} -> Page {{end}}",
     partLabel: "Part {{number}}",
     waveLabel: "Wave {{number}}",
@@ -95,6 +109,46 @@ const PLAN_TEXT = {
     activePartLabel: "1 active part",
     balancedPartsLabel: "Balanced parts",
   },
+  ar: {
+    halfPageSingular: "نصف صفحة",
+    halfPagePlural: "أنصاف صفحات",
+    lineSingular: "سطر",
+    linePlural: "أسطر",
+    pageSingular: "صفحة",
+    pagePlural: "صفحات",
+    upperHalf: "علوية",
+    lowerHalf: "سفلية",
+    pageLabel: "الصفحة {{page}}",
+    halfPageLabel: "الصفحة {{page}} النصف {{half}}",
+    lineLabel: "الصفحة {{page}} السطر {{line}}",
+    pageRangeLabel: "الصفحة {{start}} -> الصفحة {{end}}",
+    partLabel: "الجزء {{number}}",
+    waveLabel: "الموجة {{number}}",
+    validationLabel: "التحقق {{number}}",
+    phaseLabel: "المرحلة {{current}} / {{total}}",
+    titleOld: "القديم",
+    titleConsolidation: "التثبيت",
+    titleRecent: "القريب",
+    titleYesterday: "الأمس",
+    titleNew: "الجديد",
+    directionForward: "من البداية إلى النهاية",
+    directionReverse: "من النهاية إلى البداية",
+    oldHelper: "دورة تلقائية على 7 أجزاء متوازنة في كل المحفوظ الأقدم من 30 يوما.",
+    oldEmpty: "لا يوجد قديم متاح بعد.",
+    consolidationHelper:
+      "مراجعة الجزء الواقع ضمن آخر 30 يوما: التثبيت يغطي J-8 إلى J-30 مع جزء واحد نشط للتحقق اليوم.",
+    consolidationEmpty: "لا يوجد جزء مراجعة متاح بعد لآخر 30 يوما (من J-8 إلى J-30).",
+    recentHelper: "كتلة متصلة من J-1 إلى J-7.",
+    recentEmpty: "لا يوجد قريب متاح بعد.",
+    yesterdayHelper: "كتلة جديد الأمس فقط.",
+    yesterdayEmpty: "لا يوجد بلوك للأمس بعد.",
+    newHelper: "3 موجات، 3 تحققـات في كل موجة.",
+    newEmpty: "لا يوجد جديد آخر لإسناده.",
+    newFinished: "اكتمل الجديد",
+    programFinished: "اكتمل المسار",
+    activePartLabel: "جزء نشط واحد",
+    balancedPartsLabel: "أجزاء متوازنة",
+  },
 };
 
 function clampInteger(value, min, max, fallback) {
@@ -105,8 +159,38 @@ function clampInteger(value, min, max, fallback) {
   return Math.min(Math.max(normalized, min), max);
 }
 
+function formatDecimal(value, maxDecimals = 2) {
+  return Number(value || 0)
+    .toFixed(maxDecimals)
+    .replace(/\.?0+$/, "");
+}
+
+function isLegacyProgressScale(input = {}) {
+  const rawTotal = Number(input.totalHalfPages);
+  if (Number.isFinite(rawTotal) && rawTotal > 0) {
+    return rawTotal <= MUSHAF_TOTAL_PAGES * LEGACY_UNITS_PER_PAGE;
+  }
+
+  return false;
+}
+
+function convertLegacyCountToProgressUnits(value) {
+  return Math.max(0, Math.round(Number(value || 0) * (PROGRESS_UNITS_PER_PAGE / LEGACY_UNITS_PER_PAGE)));
+}
+
+function convertLegacyPointToProgressUnits(value) {
+  const normalized = Math.max(1, Number(value || DEFAULT_PROGRESS.currentHalfPage));
+  return convertLegacyCountToProgressUnits(normalized - 1) + 1;
+}
+
 function normalizeLanguage(value) {
-  return value === "en" ? "en" : "fr";
+  if (value === "en") {
+    return "en";
+  }
+  if (value === "ar") {
+    return "ar";
+  }
+  return "fr";
 }
 
 function normalizeProgramMode(value) {
@@ -131,12 +215,38 @@ function formatHalfPageCount(value, language = "fr") {
   return `${normalized} ${unit}`;
 }
 
+function formatLineCount(value, language = "fr") {
+  const normalized = Number(value || 0);
+  const formatted = Number.isInteger(normalized) ? String(normalized) : formatDecimal(normalized, 1);
+  const numeric = Number(formatted);
+  const unit = numeric === 1 ? getPlanText(language, "lineSingular") : getPlanText(language, "linePlural");
+  return `${formatted} ${unit}`;
+}
+
 function formatPageCountFromHalfPages(halfPageCount, language = "fr") {
-  const normalized = Number(halfPageCount || 0) / 2;
-  const formatted = Number.isInteger(normalized) ? String(normalized) : normalized.toFixed(1);
+  const units = Math.max(0, Number(halfPageCount || 0));
+  if (units > 0 && units < PROGRESS_UNITS_PER_PAGE) {
+    if (units === PROGRESS_UNITS_PER_PAGE / 2) {
+      return formatHalfPageCount(1, language);
+    }
+
+    if (units > PROGRESS_UNITS_PER_PAGE / 2) {
+      const remainingUnits = units - PROGRESS_UNITS_PER_PAGE / 2;
+      if (remainingUnits > 0 && remainingUnits % PROGRESS_UNITS_PER_LINE === 0) {
+        return `${formatHalfPageCount(1, language)} + ${formatLineCount(remainingUnits / PROGRESS_UNITS_PER_LINE, language)}`;
+      }
+    }
+
+    if (units % PROGRESS_UNITS_PER_LINE === 0) {
+      return formatLineCount(units / PROGRESS_UNITS_PER_LINE, language);
+    }
+  }
+
+  const normalized = units / PROGRESS_UNITS_PER_PAGE;
+  const formatted = Number.isInteger(normalized) ? String(normalized) : formatDecimal(normalized);
   const numeric = Number(formatted);
   const unit =
-    numeric === 1 || numeric === 0.5 ? getPlanText(language, "pageSingular") : getPlanText(language, "pagePlural");
+    (numeric > 0 && numeric < 1) || numeric === 1 ? getPlanText(language, "pageSingular") : getPlanText(language, "pagePlural");
   return `${formatted} ${unit}`;
 }
 
@@ -160,9 +270,19 @@ function normalizeShortText(value, fallback = "", maxLength = 40) {
 }
 
 function normalizeSettings(input = {}) {
+  const legacyScale = isLegacyProgressScale(input);
+  const normalizedDailyNewUnits = legacyScale
+    ? convertLegacyCountToProgressUnits(input.dailyNewHalfPages)
+    : input.dailyNewHalfPages;
+
   return {
-    dailyNewHalfPages: clampInteger(input.dailyNewHalfPages, 1, 20, DEFAULT_SETTINGS.dailyNewHalfPages),
-    totalHalfPages: clampInteger(input.totalHalfPages, 2, 4000, DEFAULT_SETTINGS.totalHalfPages),
+    dailyNewHalfPages: clampInteger(
+      normalizedDailyNewUnits,
+      1,
+      MAX_DAILY_NEW_PAGES * PROGRESS_UNITS_PER_PAGE,
+      DEFAULT_SETTINGS.dailyNewHalfPages,
+    ),
+    totalHalfPages: DEFAULT_SETTINGS.totalHalfPages,
     firstName: normalizeShortText(input.firstName, DEFAULT_SETTINGS.firstName),
     language: normalizeLanguage(input.language || DEFAULT_SETTINGS.language),
     programMode: normalizeProgramMode(input.programMode || DEFAULT_SETTINGS.programMode),
@@ -195,11 +315,20 @@ function physicalHalfPageToSequenceIndex(index, totalHalfPages, direction = "for
   return index;
 }
 
-function normalizeProgress(input = {}, settings = DEFAULT_SETTINGS) {
+function normalizeProgress(input = {}, settings = DEFAULT_SETTINGS, options = {}) {
+  const normalizedInput = options.legacyScale
+    ? {
+        ...input,
+        currentHalfPage: convertLegacyPointToProgressUnits(input.currentHalfPage),
+        phaseProgressHalfPages: Array.isArray(input.phaseProgressHalfPages)
+          ? input.phaseProgressHalfPages.map(convertLegacyCountToProgressUnits)
+          : input.phaseProgressHalfPages,
+      }
+    : input;
   const phases = getProgramPhases(settings);
-  const fallbackPhaseIndex = clampInteger(input.phaseIndex, 1, phases.length, DEFAULT_PROGRESS.phaseIndex);
+  const fallbackPhaseIndex = clampInteger(normalizedInput.phaseIndex, 1, phases.length, DEFAULT_PROGRESS.phaseIndex);
   const fallbackCurrentHalfPage = clampInteger(
-    input.currentHalfPage,
+    normalizedInput.currentHalfPage,
     1,
     settings.totalHalfPages + 1,
     DEFAULT_PROGRESS.currentHalfPage,
@@ -215,16 +344,18 @@ function normalizeProgress(input = {}, settings = DEFAULT_SETTINGS) {
 
     return 0;
   });
-  const rawPhaseProgress = Array.isArray(input.phaseProgressHalfPages) ? input.phaseProgressHalfPages : derivedPhaseProgress;
+  const rawPhaseProgress = Array.isArray(normalizedInput.phaseProgressHalfPages)
+    ? normalizedInput.phaseProgressHalfPages
+    : derivedPhaseProgress;
   const phaseProgressHalfPages = phases.map((_phase, index) =>
     clampInteger(rawPhaseProgress[index], 0, settings.totalHalfPages, derivedPhaseProgress[index] || 0),
   );
-  const activePhaseIndex = clampInteger(input.phaseIndex, 1, phases.length, fallbackPhaseIndex);
+  const activePhaseIndex = clampInteger(normalizedInput.phaseIndex, 1, phases.length, fallbackPhaseIndex);
   const activePhaseCount = phaseProgressHalfPages[activePhaseIndex - 1] || 0;
 
   return {
     currentHalfPage: activePhaseCount >= settings.totalHalfPages ? settings.totalHalfPages + 1 : activePhaseCount + 1,
-    programDayIndex: clampInteger(input.programDayIndex, 1, 50000, DEFAULT_PROGRESS.programDayIndex),
+    programDayIndex: clampInteger(normalizedInput.programDayIndex, 1, 50000, DEFAULT_PROGRESS.programDayIndex),
     phaseIndex: activePhaseIndex,
     phaseProgressHalfPages,
   };
@@ -280,33 +411,93 @@ function getDaySignature(settings, progress) {
   ].join(":");
 }
 
-function halfPageToParts(index) {
+function progressUnitToParts(index) {
+  const normalizedIndex = Math.max(1, Math.round(Number(index) || 1));
+  const zeroBased = normalizedIndex - 1;
+  const page = Math.floor(zeroBased / PROGRESS_UNITS_PER_PAGE) + 1;
+  const unitInPage = (zeroBased % PROGRESS_UNITS_PER_PAGE) + 1;
+  const line = Math.max(1, Math.min(LINES_PER_PAGE, Math.ceil(unitInPage / PROGRESS_UNITS_PER_LINE)));
+
   return {
-    index,
-    page: Math.ceil(index / 2),
-    half: index % 2 === 1 ? "haute" : "basse",
+    index: normalizedIndex,
+    page,
+    unitInPage,
+    line,
+    half: unitInPage <= PROGRESS_UNITS_PER_PAGE / 2 ? "haute" : "basse",
   };
 }
 
 function formatHalfPage(index, language = "fr") {
-  const parts = halfPageToParts(index);
-  return getPlanText(language, "halfPageLabel", {
+  const parts = progressUnitToParts(index);
+  if (parts.unitInPage === 1) {
+    return getPlanText(language, "pageLabel", { page: parts.page });
+  }
+
+  if (parts.unitInPage === PROGRESS_UNITS_PER_PAGE / 2 + 1) {
+    return getPlanText(language, "halfPageLabel", {
+      page: parts.page,
+      half: getPlanText(language, "lowerHalf"),
+    });
+  }
+
+  return getPlanText(language, "lineLabel", {
     page: parts.page,
-    half: getPlanText(language, parts.half === "haute" ? "upperHalf" : "lowerHalf"),
+    line: parts.line,
   });
 }
 
 function formatRangeLabel(physicalStart, physicalEnd, language = "fr") {
-  const startParts = halfPageToParts(physicalStart);
-  const endParts = halfPageToParts(physicalEnd);
-  const isForwardWholePage = physicalStart <= physicalEnd && physicalStart % 2 === 1 && physicalEnd % 2 === 0;
-  const isReverseWholePage = physicalStart >= physicalEnd && physicalStart % 2 === 0 && physicalEnd % 2 === 1;
+  const startParts = progressUnitToParts(physicalStart);
+  const endParts = progressUnitToParts(physicalEnd);
+  const isForwardWholePage =
+    physicalStart <= physicalEnd &&
+    startParts.unitInPage === 1 &&
+    endParts.unitInPage === PROGRESS_UNITS_PER_PAGE;
+  const isReverseWholePage =
+    physicalStart >= physicalEnd &&
+    startParts.unitInPage === PROGRESS_UNITS_PER_PAGE &&
+    endParts.unitInPage === 1;
 
   if (isForwardWholePage || isReverseWholePage) {
     if (startParts.page === endParts.page) {
       return getPlanText(language, "pageLabel", { page: startParts.page });
     }
     return getPlanText(language, "pageRangeLabel", { start: startParts.page, end: endParts.page });
+  }
+
+  const isUpperHalfRange =
+    startParts.page === endParts.page &&
+    startParts.unitInPage === 1 &&
+    endParts.unitInPage === PROGRESS_UNITS_PER_PAGE / 2;
+  const isLowerHalfRange =
+    startParts.page === endParts.page &&
+    startParts.unitInPage === PROGRESS_UNITS_PER_PAGE / 2 + 1 &&
+    endParts.unitInPage === PROGRESS_UNITS_PER_PAGE;
+  const isUpperHalfReverseRange =
+    startParts.page === endParts.page &&
+    startParts.unitInPage === PROGRESS_UNITS_PER_PAGE / 2 &&
+    endParts.unitInPage === 1;
+  const isLowerHalfReverseRange =
+    startParts.page === endParts.page &&
+    startParts.unitInPage === PROGRESS_UNITS_PER_PAGE &&
+    endParts.unitInPage === PROGRESS_UNITS_PER_PAGE / 2 + 1;
+  if (isUpperHalfRange || isLowerHalfRange || isUpperHalfReverseRange || isLowerHalfReverseRange) {
+    return getPlanText(language, "halfPageLabel", {
+      page: startParts.page,
+      half: getPlanText(language, isUpperHalfRange || isUpperHalfReverseRange ? "upperHalf" : "lowerHalf"),
+    });
+  }
+
+  if (startParts.page === endParts.page) {
+    const startLineLabel = getPlanText(language, "lineLabel", {
+      page: startParts.page,
+      line: startParts.line,
+    });
+    const endLineLabel = getPlanText(language, "lineLabel", {
+      page: endParts.page,
+      line: endParts.line,
+    });
+    return startLineLabel === endLineLabel ? startLineLabel : `${startLineLabel} -> ${endLineLabel}`;
   }
 
   const startLabel = formatHalfPage(physicalStart, language);
@@ -335,7 +526,7 @@ function createRange(start, end, totalHalfPages, language = "fr", direction = "f
   const coverageEnd = Math.max(physicalStart, physicalEnd);
   const startLabel = formatHalfPage(physicalStart, language);
   const endLabel = formatHalfPage(physicalEnd, language);
-  const pageCount = (safeEnd - safeStart + 1) / 2;
+  const pageCount = (safeEnd - safeStart + 1) / PROGRESS_UNITS_PER_PAGE;
   return {
     start: safeStart,
     end: safeEnd,
@@ -358,8 +549,8 @@ function createPageWindowRange(startPage, endPage, poolRange, totalHalfPages, la
     return null;
   }
 
-  const poolPageStart = Math.ceil(poolRange.start / 2);
-  const poolPageEnd = Math.ceil(poolRange.end / 2);
+  const poolPageStart = Math.ceil(poolRange.start / PROGRESS_UNITS_PER_PAGE);
+  const poolPageEnd = Math.ceil(poolRange.end / PROGRESS_UNITS_PER_PAGE);
   const safeStartPage = Math.max(poolPageStart, startPage);
   const safeEndPage = Math.min(poolPageEnd, endPage);
 
@@ -367,8 +558,9 @@ function createPageWindowRange(startPage, endPage, poolRange, totalHalfPages, la
     return null;
   }
 
-  const startHalfPage = safeStartPage === poolPageStart ? poolRange.start : (safeStartPage - 1) * 2 + 1;
-  const endHalfPage = safeEndPage === poolPageEnd ? poolRange.end : safeEndPage * 2;
+  const startHalfPage =
+    safeStartPage === poolPageStart ? poolRange.start : (safeStartPage - 1) * PROGRESS_UNITS_PER_PAGE + 1;
+  const endHalfPage = safeEndPage === poolPageEnd ? poolRange.end : safeEndPage * PROGRESS_UNITS_PER_PAGE;
   const baseRange = createRange(startHalfPage, endHalfPage, totalHalfPages, language, direction);
 
   if (!baseRange) {
@@ -444,8 +636,8 @@ function buildOldBlock(oldPoolRange, programDayIndex, totalHalfPages, language =
     };
   }
 
-  const poolPageStart = Math.ceil(oldPoolRange.start / 2);
-  const poolPageEnd = Math.ceil(oldPoolRange.end / 2);
+  const poolPageStart = Math.ceil(oldPoolRange.start / PROGRESS_UNITS_PER_PAGE);
+  const poolPageEnd = Math.ceil(oldPoolRange.end / PROGRESS_UNITS_PER_PAGE);
   const poolPageCount = poolPageEnd - poolPageStart + 1;
   const windowCount = Math.max(1, Math.min(computeOldWindowCount(), poolPageCount));
   const baseSize = Math.floor(poolPageCount / windowCount);
@@ -679,7 +871,7 @@ function buildTodayPlan({ settings, progress, dailyStatus }) {
       phaseProgressHalfPages,
       totalProgramHalfPages,
       totalHalfPages,
-      totalPages: totalHalfPages / 2,
+      totalPages: totalHalfPages / PROGRESS_UNITS_PER_PAGE,
     },
     blocks,
     order,
@@ -704,6 +896,7 @@ module.exports = {
   computeOldWindowCount,
   getDaySignature,
   getProgramPhases,
+  isLegacyProgressScale,
   normalizeDailyStatus,
   normalizeProgress,
   physicalHalfPageToSequenceIndex,

@@ -1,0 +1,21 @@
+{
+  "appId": "com.dabt.app",
+  "appName": "Dabt",
+  "webDir": "public",
+  "bundledWebRuntime": false,
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "launchAutoHide": true,
+      "showSpinner": false,
+      "backgroundColor": "#f5f0e4",
+      "androidSplashResourceName": "splash",
+      "androidScaleType": "CENTER_CROP"
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#f5f0e4",
+      "overlaysWebView": false
+    }
+  }
+}

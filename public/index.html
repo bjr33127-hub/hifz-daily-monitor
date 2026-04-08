@@ -2,8 +2,14 @@
 <html lang="fr">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Hifz Daily Monitor</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+    <title>Dabt</title>
+    <meta name="theme-color" content="#1d5b4f" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -13,11 +19,16 @@
       <header class="hero panel">
         <div class="hero-grid">
           <div class="hero-copy">
-            <p class="eyebrow">Hifz Daily Monitor</p>
-            <h1 id="hero-title">Bismillah, voici ton plan du jour !&#10024;</h1>
+            <p class="eyebrow">Dabt</p>
+            <h1 id="hero-title">Bismillah, voici ton <span class="ui-emphasis title-emphasis">plan du jour</span> !<span class="hero-title-sparkle" aria-hidden="true">✨</span></h1>
             <p class="hero-text" data-i18n="hero.text">
               Le tableau affiche seulement ce qu'il faut reciter aujourd'hui, dans l'ordre du programme.
             </p>
+            <div class="hero-action-row">
+              <button id="install-app-button" class="secondary-button" type="button" data-i18n="hero.installApp" hidden>
+                Installer Dabt
+              </button>
+            </div>
           </div>
           <div id="summary" class="hero-summary"></div>
         </div>
@@ -33,11 +44,12 @@
 
       <section class="panel section-nav-panel">
         <div class="section-nav">
-          <button class="section-tab active" type="button" data-view-target="today" data-i18n="nav.today">Aujourd'hui</button>
-          <button class="section-tab" type="button" data-view-target="pages" data-i18n="nav.pages">Pages</button>
-          <button class="section-tab" type="button" data-view-target="review" data-i18n="nav.review">Revoir ses erreurs</button>
-          <button class="section-tab" type="button" data-view-target="surahs" data-i18n="nav.surahs">Mini jeu</button>
-          <button class="section-tab" type="button" data-view-target="settings" data-i18n="nav.settings">Parametres</button>
+          <button class="section-tab active" type="button" data-view-target="today" data-i18n="nav.today"><span class="section-tab-label">Aujourd'hui</span></button>
+          <button class="section-tab" type="button" data-view-target="pages" data-i18n="nav.pages"><span class="section-tab-label">Pages</span></button>
+          <button class="section-tab" type="button" data-view-target="review" data-i18n="nav.review"><span class="section-tab-label">Revoir ses erreurs</span></button>
+          <button class="section-tab" type="button" data-view-target="statistics" data-i18n="nav.statistics"><span class="section-tab-label">Statistiques</span></button>
+          <button class="section-tab" type="button" data-view-target="surahs" data-i18n="nav.surahs"><span class="section-tab-label">Mini jeu</span></button>
+          <button class="section-tab" type="button" data-view-target="settings" data-i18n="nav.settings"><span class="section-tab-label">Parametres</span></button>
         </div>
       </section>
 
@@ -61,13 +73,11 @@
             </aside>
 
             <div class="today-main">
-              <section id="today-focus" class="panel focus-panel"></section>
-
               <section class="panel route-panel">
                 <div class="section-head">
                   <div>
                     <p class="eyebrow" data-i18n="today.routeLabel">Ordre Du Jour</p>
-                    <h2 data-i18n="today.routeTitle">Chemin De Recitation</h2>
+                    <h2 data-i18n="today.routeTitle">Chemin de récitation</h2>
                   </div>
                   <p class="muted" data-i18n="today.routeHelp">Toujours du plus ancien vers le plus neuf, sans melanger les niveaux.</p>
                 </div>
@@ -103,7 +113,10 @@
                     <p data-i18n="route.newHelp">Le bloc du jour, avec 3 vagues et 9 validations au total.</p>
                   </article>
                 </div>
+                <div id="today-phase-switcher"></div>
               </section>
+
+              <section id="today-focus" class="panel focus-panel"></section>
 
               <main id="cards" class="cards"></main>
             </div>
@@ -115,7 +128,7 @@
             <div class="section-head">
               <div>
                 <p class="eyebrow" data-i18n="pages.eyebrow">Suivi Des Erreurs</p>
-                <h2 data-i18n="pages.title">Carte Des Pages</h2>
+                <h2 data-i18n="pages.title">Carte des pages</h2>
               </div>
               <p class="muted" data-i18n="pages.help">
                 Renseigne une page apres une recitation, puis visualise a la fois les zones fragiles et les reperes du programme du jour sur tout le mushaf.
@@ -227,12 +240,25 @@
           </section>
         </section>
 
+        <section id="view-statistics" class="content-view">
+          <section class="panel statistics-panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow" data-i18n="statistics.eyebrow">Regularite</p>
+                <h2 data-i18n="statistics.title">Statistiques</h2>
+              </div>
+              <p class="muted" data-i18n="statistics.help">Observe ta streak, tes derniers jours clotures et la solidite de ta routine.</p>
+            </div>
+            <div id="statistics-view"></div>
+          </section>
+        </section>
+
         <section id="view-settings" class="content-view">
           <section class="panel config-panel">
             <div class="section-head">
               <div>
                 <p class="eyebrow" data-i18n="settings.eyebrow">Reglages</p>
-                <h2 data-i18n="settings.title">Parametres</h2>
+                <h2 data-i18n="settings.title">Paramètres</h2>
               </div>
               <p class="muted" data-i18n="settings.help">Ajuste ton point de depart et ton rythme, puis laisse le plan se recalculer.</p>
             </div>
@@ -257,6 +283,7 @@
                       <select id="language">
                         <option value="fr" data-i18n-option="settings.languageFrenchOption">Francais</option>
                         <option value="en" data-i18n-option="settings.languageEnglishOption">English</option>
+                        <option value="ar" data-i18n-option="settings.languageArabicOption">العربية</option>
                       </select>
                     </label>
                   </div>
@@ -297,37 +324,98 @@
                       <h3 data-i18n="settings.rhythmTitle">Quel rythme veux-tu tenir ?</h3>
                     </div>
                   </div>
-                  <p class="helper" data-i18n="settings.rhythmHelp">Choisis ta part de nouveau quotidienne, puis ajuste la taille totale si besoin.</p>
+                  <p class="helper" data-i18n="settings.rhythmHelp">Choisis simplement ta part de nouveau quotidienne. Le mushaf suivi reste fixe sur 604 pages.</p>
                   <div class="preset-row" role="group" aria-label="Presets nouveau">
-                    <button class="preset-chip" type="button" data-daily-new-preset="1">0.5 page</button>
-                    <button class="preset-chip" type="button" data-daily-new-preset="2">1 page</button>
-                    <button class="preset-chip" type="button" data-daily-new-preset="4">2 pages</button>
+                    <button class="preset-chip" type="button" data-daily-new-preset="0.0667">1 ligne</button>
+                    <button class="preset-chip" type="button" data-daily-new-preset="0.3333">5 lignes</button>
+                    <button class="preset-chip" type="button" data-daily-new-preset="0.5">0.5 page</button>
+                    <button class="preset-chip" type="button" data-daily-new-preset="1">1 page</button>
+                    <button class="preset-chip" type="button" data-daily-new-preset="2">2 pages</button>
                   </div>
                   <div class="form-grid setup-grid">
                     <label>
-                      <span data-i18n="settings.dailyNewLabel">Nouveau / jour (demi-pages)</span>
-                      <input id="daily-new-half-pages" type="number" min="1" />
-                    </label>
-                    <label>
-                      <span data-i18n="settings.totalHalfPagesLabel">Total de demi-pages</span>
-                      <input id="total-half-pages" type="number" min="2" />
+                      <span data-i18n="settings.dailyNewLabel">Nouveau / jour (pages)</span>
+                      <input id="daily-new-half-pages" type="number" max="10" step="any" />
                     </label>
                   </div>
                 </section>
 
-                <button class="primary-button full" type="submit" data-i18n="settings.submitButton">Recalculer la journee</button>
-              </form>
-
-              <aside class="settings-preview">
-                <div class="settings-preview-head">
-                  <div>
-                    <p class="eyebrow" data-i18n="settings.previewLabel">Apercu</p>
-                    <h3 data-i18n="settings.previewTitle">Ce que le plan va produire</h3>
+                <section class="setup-card">
+                  <div class="setup-card-head">
+                    <div class="setup-step">4</div>
+                    <div>
+                      <p class="eyebrow" data-i18n="settings.notificationsLabel">Notifications</p>
+                      <h3 data-i18n="settings.notificationsTitle">Rappels quotidiens</h3>
+                    </div>
                   </div>
-                  <p class="helper" data-i18n="settings.previewHelp">Le recap se met a jour avec l'etat actuel du programme.</p>
+                  <p class="helper" data-i18n="settings.notificationsHelp">Active les rappels puis ajuste l'heure de la revision et des 3 vagues du nouveau.</p>
+                  <div class="notification-settings-stack">
+                    <label class="notification-master-toggle">
+                      <div class="notification-master-copy">
+                        <span data-i18n="settings.notificationsEnabledLabel">Activer les notifications</span>
+                        <small data-i18n="settings.notificationsEnabledHelp">Les rappels seront planifies dans l'app mobile.</small>
+                      </div>
+                      <input id="notifications-enabled" type="checkbox" />
+                    </label>
+                    <div id="notification-runtime-status" class="notification-runtime-status helper" aria-live="polite"></div>
+                    <div class="notification-reminder-grid">
+                      <label class="notification-reminder-card">
+                        <div class="notification-reminder-head">
+                          <div class="notification-reminder-copy">
+                            <span class="eyebrow" data-i18n="settings.notificationReviewLabel">Revision</span>
+                            <strong data-i18n="settings.notificationReviewTitle">Revision du jour</strong>
+                          </div>
+                          <input id="notification-review-enabled" type="checkbox" />
+                        </div>
+                        <span class="helper" data-i18n="settings.notificationReviewHelp">Un rappel pour l'ancien, la consolidation, le recent et la veille.</span>
+                        <input id="notification-review-time" type="time" />
+                      </label>
+
+                      <label class="notification-reminder-card">
+                        <div class="notification-reminder-head">
+                          <div class="notification-reminder-copy">
+                            <span class="eyebrow" data-i18n="settings.notificationMorningLabel">Matin</span>
+                            <strong data-i18n="settings.notificationMorningTitle">Nouveau - vague 1</strong>
+                          </div>
+                          <input id="notification-morning-enabled" type="checkbox" />
+                        </div>
+                        <span class="helper" data-i18n="settings.notificationMorningHelp">Premier rappel pour lancer la premiere vague du nouveau.</span>
+                        <input id="notification-morning-time" type="time" />
+                      </label>
+
+                      <label class="notification-reminder-card">
+                        <div class="notification-reminder-head">
+                          <div class="notification-reminder-copy">
+                            <span class="eyebrow" data-i18n="settings.notificationNoonLabel">Midi</span>
+                            <strong data-i18n="settings.notificationNoonTitle">Nouveau - vague 2</strong>
+                          </div>
+                          <input id="notification-noon-enabled" type="checkbox" />
+                        </div>
+                        <span class="helper" data-i18n="settings.notificationNoonHelp">Deuxieme rappel pour reforcer le meme nouveau au milieu de la journee.</span>
+                        <input id="notification-noon-time" type="time" />
+                      </label>
+
+                      <label class="notification-reminder-card">
+                        <div class="notification-reminder-head">
+                          <div class="notification-reminder-copy">
+                            <span class="eyebrow" data-i18n="settings.notificationEveningLabel">Soir</span>
+                            <strong data-i18n="settings.notificationEveningTitle">Nouveau - vague 3</strong>
+                          </div>
+                          <input id="notification-evening-enabled" type="checkbox" />
+                        </div>
+                        <span class="helper" data-i18n="settings.notificationEveningHelp">Dernier rappel pour cloturer la troisieme vague du nouveau.</span>
+                        <input id="notification-evening-time" type="time" />
+                      </label>
+                    </div>
+                  </div>
+                </section>
+
+                <input id="total-half-pages" type="hidden" value="18120" />
+                <div class="settings-submit-bar full">
+                  <p class="helper" data-i18n="settings.submitHelp">Valide les réglages pour enregistrer puis recalculer le programme du jour.</p>
+                  <button class="primary-button full" type="submit" data-settings-submit="true" data-i18n="settings.submitButton">Valider et recalculer la journée</button>
                 </div>
-                <div id="settings-preview" class="settings-preview-stack"></div>
-              </aside>
+              </form>
             </div>
           </section>
         </section>
@@ -335,9 +423,12 @@
     </div>
 
     <div id="page-editor-modal" class="page-editor-modal" hidden></div>
+    <div id="mobile-onboarding-root" hidden></div>
     <div id="celebration-layer" class="celebration-layer" aria-hidden="true"></div>
     <div id="toast" class="toast" aria-live="polite"></div>
     <script src="/surah-pages.js" defer></script>
+    <script src="/browser-local-api.js" defer></script>
+    <script src="/data-client.js" defer></script>
     <script src="/app.js" defer></script>
   </body>
 </html>

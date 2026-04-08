@@ -2,7 +2,7 @@ const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
 const { URL } = require("node:url");
-const store = require("./storage/store");
+const { dispatchApiRequest } = require("./platform/api-dispatcher");
 
 const HOST = "127.0.0.1";
 const PORT = Number(process.env.PORT || 3100);
@@ -85,110 +85,87 @@ function serveStatic(reqPath, res) {
 }
 
 async function handleApi(req, res, url) {
-  const { pathname } = url;
-
-  if (req.method === "GET" && pathname === "/api/state") {
-    sendJson(res, 200, store.getState());
-    return true;
+  const body = req.method === "GET" ? {} : await parseBody(req);
+  const result = await dispatchApiRequest({
+    method: req.method,
+    pathname: url.pathname,
+    body,
+  });
+  if (!result.handled) {
+    return false;
   }
-
-  if (req.method === "POST" && pathname === "/api/config") {
-    sendJson(res, 200, store.saveConfig(await parseBody(req)));
-    return true;
-  }
-
-  if (req.method === "POST" && pathname === "/api/toggle-block") {
-    const body = await parseBody(req);
-    sendJson(res, 200, store.toggleBlock(String(body.blockKey || "")));
-    return true;
-  }
-
-  if (req.method === "POST" && pathname === "/api/toggle-wave-slot") {
-    const body = await parseBody(req);
-    sendJson(res, 200, store.toggleWaveSlot(Number(body.waveIndex), Number(body.slotIndex)));
-    return true;
-  }
-
-  if (req.method === "POST" && pathname === "/api/page-errors") {
-    const body = await parseBody(req);
-    sendJson(
-      res,
-      200,
-      store.setPageError(body.pages || body.page, {
-        severity: String(body.severity || ""),
-        scope: String(body.scope || ""),
-        rect: body.rect || null,
-        anchor: body.anchor || null,
-        note: body.note || "",
-      }),
-    );
-    return true;
-  }
-
-  if (req.method === "POST" && pathname === "/api/page-errors/clear") {
-    const body = await parseBody(req);
-    sendJson(res, 200, store.clearPageError(body.pages || body.page));
-    return true;
-  }
-
-  if (req.method === "POST" && pathname === "/api/page-errors/delete") {
-    const body = await parseBody(req);
-    sendJson(res, 200, store.removePageErrorItem(body.pages || body.page, body.id));
-    return true;
-  }
-
-  if (req.method === "POST" && pathname === "/api/page-learning") {
-    const body = await parseBody(req);
-    sendJson(res, 200, store.setPageLearned(body.pages || body.page, Boolean(body.learned)));
-    return true;
-  }
-
-  if (req.method === "POST" && pathname === "/api/reset-today") {
-    sendJson(res, 200, store.resetToday());
-    return true;
-  }
-
-  if (req.method === "POST" && pathname === "/api/advance-day") {
-    sendJson(res, 200, store.advanceDay());
-    return true;
-  }
-
-  if (req.method === "POST" && pathname === "/api/skip-memorization-day") {
-    sendJson(res, 200, store.skipMemorizationDay());
-    return true;
-  }
-
-  if (req.method === "POST" && pathname === "/api/error-review/answer") {
-    const body = await parseBody(req);
-    sendJson(res, 200, store.answerErrorReview(body.id, String(body.result || "")));
-    return true;
-  }
-
-  return false;
+  sendJson(res, 200, result.payload);
+  return true;
 }
 
-const server = http.createServer(async (req, res) => {
-  try {
-    const url = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
-    if (url.pathname.startsWith("/api/")) {
-      const handled = await handleApi(req, res, url);
-      if (!handled) {
-        sendJson(res, 404, { error: "Route API introuvable." });
+function createServer(options = {}) {
+  const host = options.host || HOST;
+  const fallbackPort = Number.isInteger(options.port) ? options.port : PORT;
+
+  return http.createServer(async (req, res) => {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host || `${host}:${fallbackPort}`}`);
+      if (url.pathname.startsWith("/api/")) {
+        const handled = await handleApi(req, res, url);
+        if (!handled) {
+          sendJson(res, 404, { error: "Route API introuvable." });
+        }
+        return;
       }
-      return;
+
+      if (req.method !== "GET") {
+        sendText(res, 405, "Methode non autorisee.");
+        return;
+      }
+
+      serveStatic(url.pathname, res);
+    } catch (error) {
+      sendJson(res, 500, { error: error.message || "Erreur interne." });
     }
+  });
+}
 
-    if (req.method !== "GET") {
-      sendText(res, 405, "Methode non autorisee.");
-      return;
-    }
+function startServer(options = {}) {
+  const host = options.host || HOST;
+  const desiredPort = Number.isInteger(options.port) ? options.port : PORT;
+  const server = createServer({ host, port: desiredPort });
 
-    serveStatic(url.pathname, res);
-  } catch (error) {
-    sendJson(res, 500, { error: error.message || "Erreur interne." });
-  }
-});
+  return new Promise((resolve, reject) => {
+    const onError = (error) => {
+      server.off("listening", onListening);
+      reject(error);
+    };
 
-server.listen(PORT, HOST, () => {
-  console.log(`Hifz Daily Monitor running on http://${HOST}:${PORT}`);
-});
+    const onListening = () => {
+      server.off("error", onError);
+      const address = server.address();
+      const port = typeof address === "object" && address ? address.port : desiredPort;
+      resolve({
+        server,
+        host,
+        port,
+        url: `http://${host}:${port}`,
+      });
+    };
+
+    server.once("error", onError);
+    server.once("listening", onListening);
+    server.listen(desiredPort, host);
+  });
+}
+
+if (require.main === module) {
+  startServer()
+    .then(({ url }) => {
+      console.log(`Hifz Daily Monitor running on ${url}`);
+    })
+    .catch((error) => {
+      console.error(error);
+      process.exitCode = 1;
+    });
+}
+
+module.exports = {
+  createServer,
+  startServer,
+};

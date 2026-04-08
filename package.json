@@ -1,15 +1,82 @@
 {
-  "name": "hifz-daily-monitor",
+  "name": "dabt",
   "version": "1.0.0",
   "private": true,
-  "description": "Tableau de monitoring quotidien pour hifz",
+  "main": "desktop/main.js",
+  "description": "Dabt - compagnon quotidien pour le hifz et la revision",
   "scripts": {
-    "start": "node src/server.js"
+    "build:brand-assets": "node scripts/generate-icons.js",
+    "build:android-assets": "node scripts/generate-android-assets.js",
+    "build:web": "npm run build:brand-assets && npm run build:browser-local-api",
+    "start": "npm run build:web && node src/server.js",
+    "build:browser-local-api": "esbuild src/platform/browser-local-api-entry.js --bundle --platform=browser --format=iife --outfile=public/browser-local-api.js",
+    "desktop:icons": "npm run build:brand-assets",
+    "desktop:dev": "npm run build:web && electron .",
+    "desktop:pack": "npm run build:web && electron-builder --dir",
+    "desktop:dist": "npm run build:web && electron-builder",
+    "android:assemble:debug": "powershell -ExecutionPolicy Bypass -File scripts/android-gradle.ps1 assembleDebug",
+    "android:bundle:debug": "powershell -ExecutionPolicy Bypass -File scripts/android-gradle.ps1 bundleDebug",
+    "android:assemble:release": "powershell -ExecutionPolicy Bypass -File scripts/android-gradle.ps1 assembleRelease",
+    "android:bundle:release": "powershell -ExecutionPolicy Bypass -File scripts/android-gradle.ps1 bundleRelease",
+    "android:keystore:generate": "powershell -ExecutionPolicy Bypass -File scripts/android-generate-keystore.ps1",
+    "android:devices": "powershell -ExecutionPolicy Bypass -File scripts/android-adb.ps1 devices",
+    "android:install:debug": "powershell -ExecutionPolicy Bypass -File scripts/android-adb.ps1 install -r android\\app\\build\\outputs\\apk\\debug\\app-debug.apk",
+    "android:logcat": "powershell -ExecutionPolicy Bypass -File scripts/android-adb.ps1 logcat",
+    "android:studio": "powershell -ExecutionPolicy Bypass -File scripts/open-android-studio.ps1",
+    "cap:copy": "npm run build:web && npx cap copy",
+    "cap:sync": "npm run build:web && npx cap sync && npm run build:android-assets",
+    "cap:doctor": "npx cap doctor",
+    "cap:add:android": "npm run build:web && npx cap add android && npm run build:android-assets",
+    "cap:open:android": "npx cap open android",
+    "cap:run:android": "npm run cap:sync && npx cap run android"
   },
   "engines": {
     "node": ">=20"
   },
+  "author": "bjr33",
   "dependencies": {
+    "@capacitor/android": "^8.3.0",
+    "@capacitor/core": "^8.3.0",
+    "@capacitor/local-notifications": "^8.0.2",
+    "@capacitor/splash-screen": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.2",
     "ts-fsrs": "^5.3.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.3.0",
+    "electron": "^37.2.0",
+    "electron-builder": "^26.0.12",
+    "esbuild": "^0.25.11",
+    "icon-gen": "^5.0.0",
+    "sharp": "^0.34.5"
+  },
+  "build": {
+    "appId": "com.dabt.app",
+    "productName": "Dabt",
+    "icon": "build/icon.png",
+    "files": [
+      "desktop/**/*",
+      "public/**/*",
+      "src/**/*",
+      "build/icon.*",
+      "package.json"
+    ],
+    "directories": {
+      "buildResources": "build"
+    },
+    "win": {
+      "signAndEditExecutable": false,
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis"
+      ]
+    },
+    "mac": {
+      "icon": "build/icon.icns",
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.education"
+    }
   }
 }
