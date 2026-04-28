@@ -1,0 +1,65 @@
+name: Deploy legal pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/deploy-legal-pages.yml"
+      - "public/privacy.html"
+      - "public/support.html"
+      - "public/legal.css"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build legal artifact
+        shell: bash
+        run: |
+          mkdir -p site
+          cp public/privacy.html site/privacy.html
+          cp public/support.html site/support.html
+          cp public/legal.css site/legal.css
+          cat <<'EOF' > site/index.html
+          <!doctype html>
+          <html lang="en">
+            <head>
+              <meta charset="utf-8" />
+              <meta http-equiv="refresh" content="0; url=./privacy.html" />
+              <meta name="viewport" content="width=device-width, initial-scale=1" />
+              <title>Dabt legal pages</title>
+            </head>
+            <body>
+              <p>Redirecting to <a href="./privacy.html">privacy policy</a>...</p>
+            </body>
+          </html>
+          EOF
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
